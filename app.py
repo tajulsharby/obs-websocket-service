@@ -178,12 +178,6 @@ async def start_server():
 
 if __name__ == "__main__":
     try:
-        loop = asyncio.get_event_loop()
-
-        # Use ProactorEventLoop on Windows to avoid compatibility issues with asyncio
-        if os.name == 'nt' and isinstance(loop, asyncio.ProactorEventLoop):
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-
         asyncio.run(start_server())
     except KeyboardInterrupt:
         print("Server stopped by user")
