@@ -1,16 +1,16 @@
 import json
 import logging
-import websockets
 import asyncio
+import websockets
+from obsws_python import ReqClient
+from datetime import datetime
 import os
 import shutil
-from datetime import datetime
-from obsws_python import ReqClient
 
 # OBS WebSocket connection details
-OBS_HOST = "localhost"
-OBS_PORT = 4455  # Default port for OBS WebSocket v5.x+
-OBS_PASSWORD = ""  # No password required if authentication is disabled
+OBS_HOST = os.getenv("OBS_HOST", "localhost")
+OBS_PORT = int(os.getenv("OBS_PORT", 4455))
+OBS_PASSWORD = os.getenv("OBS_PASSWORD", "")
 
 # Default paths for recordings, clips, and snapshots
 BASE_PATH = os.getcwd()
@@ -23,14 +23,15 @@ os.makedirs(VIDEO_PATH, exist_ok=True)
 os.makedirs(CLIPS_PATH, exist_ok=True)
 os.makedirs(SNAPSHOT_PATH, exist_ok=True)
 
-# Global set to manage connected clients
-clients = set()
-
 class OBSService:
     def __init__(self):
         # Initialize and connect to OBS when creating an instance
-        self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
-        self.current_recording_file = None
+        try:
+            self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
+        except Exception as e:
+            logging.error(f"Failed to connect to OBS WebSocket: {e}")
+            raise e
+        self.replay_buffer_saved_path = None
 
     def disconnect(self):
         self.ws.disconnect()
@@ -85,19 +86,23 @@ class OBSService:
 
     def save_replay_buffer(self):
         # Save the replay buffer as a highlight
-        response = self.ws.save_replay_buffer()
-        if response and response.output_path:
-            return response.output_path
-        else:
-            raise Exception("Failed to retrieve replay buffer output path")
+        try:
+            response = self.ws.save_replay_buffer()
+            saved_replay_path = response.output_path if response.output_path else None
+            if saved_replay_path:
+                # Stop the replay buffer after saving
+                self.ws.stop_replay_buffer()
+                return saved_replay_path
+            else:
+                raise Exception("Failed to retrieve replay buffer output path")
+        except Exception as e:
+            raise Exception(f"Failed to save replay buffer: {str(e)}")
 
 # WebSocket handler for incoming connections
 async def handle_client(websocket, path):
-    clients.add(websocket)
-    logging.info(f"Client connected: {websocket.remote_address}")
-    obs_service = OBSService()
-
+    obs_service = None
     try:
+        obs_service = OBSService()
         async for message in websocket:
             try:
                 data = json.loads(message)
@@ -137,10 +142,10 @@ async def handle_client(websocket, path):
 
                 elif command == "SAVE_REPLAY_BUFFER":
                     try:
-                        replay_path = obs_service.save_replay_buffer()
+                        file_path = obs_service.save_replay_buffer()
                         await websocket.send(json.dumps({
                             "status": "Replay buffer saved",
-                            "file_path": replay_path
+                            "file_path": file_path
                         }))
                     except Exception as e:
                         await websocket.send(json.dumps({"error": f"Saving replay buffer failed: {str(e)}"}))
@@ -150,12 +155,11 @@ async def handle_client(websocket, path):
             except json.JSONDecodeError:
                 await websocket.send(json.dumps({"error": "Invalid message format"}))
 
-    except websockets.ConnectionClosed:
-        logging.info(f"Connection closed: {websocket.remote_address}")
+    except Exception as e:
+        await websocket.send(json.dumps({"error": f"OBSService initialization failed: {str(e)}"}))
     finally:
-        clients.remove(websocket)
-        obs_service.disconnect()
-        logging.info(f"Client disconnected: {websocket.remote_address}")
+        if obs_service:
+            obs_service.disconnect()
 
 # Start the WebSocket server
 async def start_server():
@@ -165,4 +169,7 @@ async def start_server():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(start_server())
+    try:
+        asyncio.run(start_server())
+    except KeyboardInterrupt:
+        print("Server stopped by user")
