@@ -7,7 +7,6 @@ from datetime import datetime
 import shutil
 import argparse
 import logging
-import ssl
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,8 +18,6 @@ parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket po
 parser.add_argument('--obs_password', type=str, default='', help='OBS WebSocket password')
 parser.add_argument('--ws_host', type=str, default='0.0.0.0', help='WebSocket server host')
 parser.add_argument('--ws_port', type=int, default=8765, help='WebSocket server port')
-parser.add_argument('--certfile', type=str, required=True, help='Path to SSL certificate file')
-parser.add_argument('--keyfile', type=str, required=True, help='Path to SSL key file')
 args = parser.parse_args()
 
 # OBS WebSocket connection details
@@ -176,12 +173,9 @@ async def handle_client(request):
 
     return ws
 
-# Start the WebSocket server using aiohttp with SSL
-ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-ssl_context.load_cert_chain(certfile=args.certfile, keyfile=args.keyfile)
-
+# Start the WebSocket server using aiohttp
 app = web.Application()
 app.router.add_get('/', handle_client)
 
 if __name__ == "__main__":
-    web.run_app(app, host=args.ws_host, port=args.ws_port, ssl_context=ssl_context)
+    web.run_app(app, host=args.ws_host, port=args.ws_port)
