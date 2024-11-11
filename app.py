@@ -172,10 +172,18 @@ async def handle_client(websocket, path):
 async def start_server():
     server = await websockets.serve(handle_client, args.ws_host, args.ws_port)
     print(f"WebSocket server started at ws://{args.ws_host}:{args.ws_port}")
+
+    # Run the server until it is closed
     await server.wait_closed()
 
 if __name__ == "__main__":
     try:
+        loop = asyncio.get_event_loop()
+
+        # Use ProactorEventLoop on Windows to avoid compatibility issues with asyncio
+        if os.name == 'nt' and isinstance(loop, asyncio.ProactorEventLoop):
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
         asyncio.run(start_server())
     except KeyboardInterrupt:
         print("Server stopped by user")
