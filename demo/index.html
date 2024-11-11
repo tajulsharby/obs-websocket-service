@@ -32,8 +32,7 @@
     <script>
         const apiHost = prompt("Enter API server host (default: localhost):", "localhost");
         const apiPort = prompt("Enter API server port (default: 8080):", "8080");
-        const apiUrl = `http://${apiHost}:${apiPort}`;
-
+        const baseUrl = `http://${apiHost}:${apiPort}`;
         const consoleDiv = document.getElementById('console');
 
         document.getElementById('startRecording').addEventListener('click', () => {
@@ -60,24 +59,25 @@
             sendApiRequest('/save_replay_buffer');
         });
 
-        function sendApiRequest(endpoint) {
-            fetch(`${apiUrl}${endpoint}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    logToConsole(`Error: ${data.error}`);
+        async function sendApiRequest(endpoint) {
+            try {
+                const response = await fetch(`${baseUrl}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    logToConsole(`Server: ${JSON.stringify(data)}`);
                 } else {
-                    logToConsole(`Server: ${data.status}${data.file_path ? ', File Path: ' + data.file_path : ''}`);
+                    const errorData = await response.json();
+                    logToConsole(`Error: ${JSON.stringify(errorData)}`);
                 }
-            })
-            .catch(error => {
-                logToConsole(`Error: ${error}`);
-            });
+            } catch (error) {
+                logToConsole(`Request failed: ${error}`);
+            }
         }
 
         function logToConsole(message) {
