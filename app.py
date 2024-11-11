@@ -170,10 +170,9 @@ async def handle_client(websocket, path):
 
 # Start the WebSocket server
 async def start_server():
-    server = await websockets.serve(handle_client, args.ws_host, args.ws_port)
+    loop = asyncio.get_running_loop()  # Use the running event loop
+    server = await websockets.serve(handle_client, args.ws_host, args.ws_port, loop=loop)
     print(f"WebSocket server started at ws://{args.ws_host}:{args.ws_port}")
-
-    # Run the server until it is closed
     await server.wait_closed()
 
 if __name__ == "__main__":
