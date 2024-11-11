@@ -30,64 +30,54 @@
     <div id="console"></div>
 
     <script>
-        const wsHost = prompt("Enter WebSocket server host (default: localhost):", "localhost");
-        const wsPort = prompt("Enter WebSocket server port (default: 8765):", "8765");
-        const wsUrl = `ws://${wsHost}:${wsPort}`;
-        const ws = new WebSocket(wsUrl);
+        const apiHost = prompt("Enter API server host (default: localhost):", "localhost");
+        const apiPort = prompt("Enter API server port (default: 8080):", "8080");
+        const apiUrl = `http://${apiHost}:${apiPort}`;
+
         const consoleDiv = document.getElementById('console');
 
-        ws.onopen = () => {
-            logToConsole('WebSocket connection established.');
-        };
-
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.file_path) {
-                logToConsole('Server: ' + data.status + ', File Path: ' + data.file_path);
-            } else {
-                logToConsole('Server: ' + event.data);
-            }
-        };
-
-        ws.onerror = (error) => {
-            logToConsole('WebSocket Error: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
-        };
-
-        ws.onclose = (event) => {
-            logToConsole(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
-        };
-
         document.getElementById('startRecording').addEventListener('click', () => {
-            sendCommand({ command: 'START_RECORDING' });
+            sendApiRequest('/start_recording');
         });
 
         document.getElementById('stopRecording').addEventListener('click', () => {
-            sendCommand({ command: 'STOP_RECORDING' });
+            sendApiRequest('/stop_recording');
         });
 
         document.getElementById('pauseRecording').addEventListener('click', () => {
-            sendCommand({ command: 'PAUSE_RECORDING' });
+            sendApiRequest('/pause_recording');
         });
 
         document.getElementById('takeSnapshot').addEventListener('click', () => {
-            sendCommand({ command: 'TAKE_SNAPSHOT' });
+            sendApiRequest('/take_snapshot');
         });
 
         document.getElementById('startReplayBuffer').addEventListener('click', () => {
-            sendCommand({ command: 'START_REPLAY_BUFFER' });
+            sendApiRequest('/start_replay_buffer');
         });
 
         document.getElementById('saveReplayBuffer').addEventListener('click', () => {
-            sendCommand({ command: 'SAVE_REPLAY_BUFFER' });
+            sendApiRequest('/save_replay_buffer');
         });
 
-        function sendCommand(command) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(command));
-                logToConsole('Client: Sent command - ' + JSON.stringify(command));
-            } else {
-                logToConsole('WebSocket is not connected.');
-            }
+        function sendApiRequest(endpoint) {
+            fetch(`${apiUrl}${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    logToConsole(`Error: ${data.error}`);
+                } else {
+                    logToConsole(`Server: ${data.status}${data.file_path ? ', File Path: ' + data.file_path : ''}`);
+                }
+            })
+            .catch(error => {
+                logToConsole(`Error: ${error}`);
+            });
         }
 
         function logToConsole(message) {

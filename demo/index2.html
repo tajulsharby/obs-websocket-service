@@ -3,69 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebSocket Client</title>
+    <title>WebSocket Client Demo</title>
+    <style>
+        #log {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
     <h1>WebSocket Client</h1>
-    <div>
-        <input type="text" id="commandInput" placeholder="Enter command" disabled />
-        <button id="sendButton" onclick="sendCommand()" disabled>Send Command</button>
-    </div>
-    <div id="output"></div>
+    <div id="log"></div>
+    <input type="text" id="message" placeholder="Enter message">
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="disconnect()">Disconnect</button>
 
     <script>
         let socket;
-        const output = document.getElementById("output");
-        const commandInput = document.getElementById("commandInput");
-        const sendButton = document.getElementById("sendButton");
+        const logElement = document.getElementById("log");
 
-        function connectWebSocket() {
+        // Connect to the WebSocket server
+        function connect() {
             socket = new WebSocket("ws://192.168.50.11:8765");
 
-            socket.onopen = function() {
-                console.log("Connected to WebSocket server.");
-                output.innerHTML += "<p>Connected to WebSocket server.</p>";
-                commandInput.disabled = false;
-                sendButton.disabled = false;
+            // Log connection status
+            socket.onopen = function () {
+                log("Connected to the WebSocket server");
             };
 
-            socket.onmessage = function(event) {
-                output.innerHTML += "<p>Server: " + event.data + "</p>";
+            socket.onmessage = function (event) {
+                log("Received: " + event.data);
             };
 
-            socket.onclose = function(event) {
-                console.log("Disconnected from WebSocket server.");
-                output.innerHTML += "<p>Disconnected from WebSocket server.</p>";
-                commandInput.disabled = true;
-                sendButton.disabled = true;
-
-                // Attempt to reconnect after a delay
-                setTimeout(function() {
-                    output.innerHTML += "<p>Attempting to reconnect...</p>";
-                    connectWebSocket();
-                }, 3000); // Retry connection every 3 seconds
+            socket.onclose = function () {
+                log("Disconnected from the WebSocket server");
             };
 
-            socket.onerror = function(error) {
-                console.error("WebSocket error: ", error);
-                output.innerHTML += "<p style='color: red;'>WebSocket error: " + error.message + "</p>";
+            socket.onerror = function (error) {
+                log("WebSocket Error: " + error);
             };
         }
 
-        function sendCommand() {
-            let command = commandInput.value;
-            if (command && socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(command);
-                commandInput.value = ""; // Clear the input field after sending
+        // Log messages to the log div
+        function log(message) {
+            const p = document.createElement("p");
+            p.textContent = message;
+            logElement.appendChild(p);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // Send a message to the server
+        function sendMessage() {
+            const message = document.getElementById("message").value;
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(message);
+                log("Sent: " + message);
             } else {
-                output.innerHTML += "<p style='color: red;'>Unable to send command. WebSocket is not connected.</p>";
+                log("WebSocket is not connected");
             }
         }
 
-        // Initiate the connection when the page loads
-        window.onload = function() {
-            connectWebSocket();
-        };
+        // Disconnect from the WebSocket server
+        function disconnect() {
+            if (socket) {
+                socket.close();
+            }
+        }
+
+        // Automatically connect when the page loads
+        window.onload = connect;
     </script>
 </body>
 </html>
