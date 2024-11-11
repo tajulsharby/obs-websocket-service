@@ -7,7 +7,11 @@ async def command_handler(websocket, path):
         response = f"Command '{message}' executed successfully"
         await websocket.send(response)
 
-start_server = websockets.serve(command_handler, "192.168.50.11", 8765)
+async def main():
+    # Change "192.168.50.11" and "8765" to your server IP and port
+    async with websockets.serve(command_handler, "192.168.50.11", 8765):
+        print("WebSocket server started")
+        await asyncio.Future()  # Run forever
 
-asyncio.get_event_loop().run_until_complete(start_server)
-asyncio.get_event_loop().run_forever()
+if __name__ == "__main__":
+    asyncio.run(main())
