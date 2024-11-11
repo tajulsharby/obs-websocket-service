@@ -1,22 +1,19 @@
-from obsws_python import ReqClient
-from aiohttp import web
-import aiohttp_cors
+import asyncio
 import json
-import os
-from datetime import datetime
-import argparse
 import logging
+from aiohttp import web
+from obsws_python import ReqClient
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
 # Parse command line arguments
-parser = argparse.ArgumentParser(description='OBS HTTP API Service')
+parser = argparse.ArgumentParser(description='OBS WebSocket Service')
 parser.add_argument('--obs_host', type=str, default='localhost', help='OBS WebSocket host')
 parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket port')
 parser.add_argument('--obs_password', type=str, default='', help='OBS WebSocket password')
-parser.add_argument('--api_host', type=str, default='0.0.0.0', help='API server host')
-parser.add_argument('--api_port', type=int, default=8080, help='API server port')
+parser.add_argument('--ws_host', type=str, default='0.0.0.0', help='WebSocket server host')
+parser.add_argument('--ws_port', type=int, default=8765, help='WebSocket server port')
 args = parser.parse_args()
 
 # OBS WebSocket connection details
@@ -107,73 +104,74 @@ class OBSService:
         else:
             raise Exception("Failed to retrieve replay buffer output path")
 
-# Create an instance of OBSService
-obs_service = OBSService()
+# WebSocket handler for incoming connections using aiohttp
+async def handle_client(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
 
-# HTTP API handlers
-async def start_recording(request):
+    obs_service = OBSService()
     try:
-        obs_service.start_recording()
-        return web.json_response({"status": "Recording started"})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        async for msg in ws:
+            if msg.type == web.WSMsgType.TEXT:
+                try:
+                    data = json.loads(msg.data)
+                    command = data.get("command")
 
-async def stop_recording(request):
-    try:
-        video_path = obs_service.stop_recording()
-        return web.json_response({"status": "Recording stopped", "file_path": video_path})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+                    if command == "START_RECORDING":
+                        obs_service.start_recording()
+                        await ws.send_str(json.dumps({"status": "Recording started"}))
 
-async def pause_recording(request):
-    try:
-        obs_service.toggle_record_pause()
-        return web.json_response({"status": "Toggled recording pause state"})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+                    elif command == "STOP_RECORDING":
+                        try:
+                            video_path = obs_service.stop_recording()
+                            await ws.send_str(json.dumps({
+                                "status": "Recording stopped",
+                                "file_path": video_path
+                            }))
+                        except Exception as e:
+                            await ws.send_str(json.dumps({"error": f"Stopping recording failed: {str(e)}"}))
 
-async def take_snapshot(request):
-    try:
-        file_path = obs_service.take_snapshot()
-        return web.json_response({"status": "Snapshot taken", "file_path": file_path})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+                    elif command == "PAUSE_RECORDING":
+                        obs_service.toggle_record_pause()
+                        await ws.send_str(json.dumps({"status": "Toggled recording pause state"}))
 
-async def start_replay_buffer(request):
-    try:
-        obs_service.start_replay_buffer()
-        return web.json_response({"status": "Replay buffer started"})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+                    elif command == "TAKE_SNAPSHOT":
+                        try:
+                            file_path = obs_service.take_snapshot()
+                            await ws.send_str(json.dumps({
+                                "status": "Snapshot taken",
+                                "file_path": file_path
+                            }))
+                        except Exception as e:
+                            await ws.send_str(json.dumps({"error": f"Snapshot failed: {str(e)}"}))
 
-async def save_replay_buffer(request):
-    try:
-        file_path = obs_service.save_replay_buffer()
-        return web.json_response({"status": "Replay buffer saved", "file_path": file_path})
-    except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+                    elif command == "START_REPLAY_BUFFER":
+                        obs_service.start_replay_buffer()
+                        await ws.send_str(json.dumps({"status": "Replay buffer started"}))
 
-# Start the API server using aiohttp and add CORS
+                    elif command == "SAVE_REPLAY_BUFFER":
+                        try:
+                            file_path = obs_service.save_replay_buffer()
+                            await ws.send_str(json.dumps({
+                                "status": "Replay buffer saved",
+                                "file_path": file_path
+                            }))
+                        except Exception as e:
+                            await ws.send_str(json.dumps({"error": f"Saving replay buffer failed: {str(e)}"}))
+
+                    else:
+                        await ws.send_str(json.dumps({"error": "Unknown command"}))
+                except json.JSONDecodeError:
+                    await ws.send_str(json.dumps({"error": "Invalid message format"}))
+
+    finally:
+        obs_service.disconnect()
+
+    return ws
+
+# Start the WebSocket server using aiohttp
 app = web.Application()
-app.router.add_post('/start_recording', start_recording)
-app.router.add_post('/stop_recording', stop_recording)
-app.router.add_post('/pause_recording', pause_recording)
-app.router.add_post('/take_snapshot', take_snapshot)
-app.router.add_post('/start_replay_buffer', start_replay_buffer)
-app.router.add_post('/save_replay_buffer', save_replay_buffer)
-
-# Configure default CORS settings.
-cors = aiohttp_cors.setup(app, defaults={
-    "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
-            expose_headers="*",
-            allow_headers="*",
-        )
-})
-
-# Apply CORS to all routes
-for route in list(app.router.routes()):
-    cors.add(route)
+app.router.add_get('/', handle_client)
 
 if __name__ == "__main__":
-    web.run_app(app, host=args.api_host, port=args.api_port)
+    web.run_app(app, host=args.ws_host, port=args.ws_port)
