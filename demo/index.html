@@ -30,11 +30,13 @@
     <div id="console"></div>
 
     <script>
-        const apiHost = prompt("Enter API server host (default: localhost):", "localhost");
+        // Prompt user for API host and port
+        const apiHost = prompt("Enter API server host (default: localhost):", "192.168.50.11");
         const apiPort = prompt("Enter API server port (default: 8080):", "8080");
         const baseUrl = `http://${apiHost}:${apiPort}`;
         const consoleDiv = document.getElementById('console');
 
+        // Event listeners for buttons
         document.getElementById('startRecording').addEventListener('click', () => {
             sendApiRequest('/start_recording');
         });
@@ -59,6 +61,7 @@
             sendApiRequest('/save_replay_buffer');
         });
 
+        // Function to send API request
         async function sendApiRequest(endpoint) {
             try {
                 const response = await fetch(`${baseUrl}${endpoint}`, {
@@ -80,6 +83,7 @@
             }
         }
 
+        // Function to log messages to console
         function logToConsole(message) {
             const p = document.createElement('p');
             p.textContent = message;
