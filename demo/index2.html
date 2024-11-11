@@ -3,82 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple WebSocket Client Demo</title>
-    <style>
-        #console {
-            width: 100%;
-            height: 200px;
-            background-color: #222;
-            color: #fff;
-            padding: 10px;
-            overflow-y: auto;
-            font-family: monospace;
-        }
-        button {
-            margin: 5px;
-        }
-    </style>
+    <title>WebSocket Client</title>
 </head>
 <body>
-    <h1>Simple WebSocket Client Demo</h1>
-    <input id="serverUrl" type="text" placeholder="ws://remote-server-ip:8765" value="ws://localhost:8765" style="width: 80%;">
-    <button id="connect">Connect</button>
-    <button id="disconnect" disabled>Disconnect</button>
-    <button id="sendPing" disabled>Send PING</button>
-    <div id="console"></div>
+    <h1>WebSocket Client</h1>
+    <input type="text" id="commandInput" placeholder="Enter command" />
+    <button onclick="sendCommand()">Send Command</button>
+    <div id="output"></div>
 
     <script>
-        let ws;
-        const consoleDiv = document.getElementById('console');
+        let socket = new WebSocket("ws://192.168.50.11:8765");
 
-        document.getElementById('connect').addEventListener('click', () => {
-            const serverUrl = document.getElementById('serverUrl').value;
-            ws = new WebSocket(serverUrl);
+        socket.onopen = function() {
+            console.log("Connected to WebSocket server.");
+        };
 
-            ws.onopen = () => {
-                logToConsole('WebSocket connection established.');
-                document.getElementById('connect').disabled = true;
-                document.getElementById('disconnect').disabled = false;
-                document.getElementById('sendPing').disabled = false;
-            };
+        socket.onmessage = function(event) {
+            let output = document.getElementById("output");
+            output.innerHTML += "<p>Server: " + event.data + "</p>";
+        };
 
-            ws.onmessage = (event) => {
-                logToConsole('Server: ' + event.data);
-            };
+        socket.onclose = function(event) {
+            console.log("Disconnected from WebSocket server.");
+        };
 
-            ws.onerror = (error) => {
-                logToConsole('WebSocket Error: ' + JSON.stringify(error));
-            };
+        socket.onerror = function(error) {
+            console.error("WebSocket error: ", error);
+        };
 
-            ws.onclose = (event) => {
-                logToConsole(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
-                document.getElementById('connect').disabled = false;
-                document.getElementById('disconnect').disabled = true;
-                document.getElementById('sendPing').disabled = true;
-            };
-        });
-
-        document.getElementById('disconnect').addEventListener('click', () => {
-            if (ws) {
-                ws.close();
+        function sendCommand() {
+            let command = document.getElementById("commandInput").value;
+            if (command) {
+                socket.send(command);
             }
-        });
-
-        document.getElementById('sendPing').addEventListener('click', () => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const command = { command: 'PING' };
-                ws.send(JSON.stringify(command));
-                logToConsole('Client: Sent command - ' + JSON.stringify(command));
-            } else {
-                logToConsole('WebSocket is not connected.');
-            }
-        });
-
-        function logToConsole(message) {
-            const p = document.createElement('p');
-            p.textContent = message;
-            consoleDiv.appendChild(p);
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
         }
     </script>
 </body>
