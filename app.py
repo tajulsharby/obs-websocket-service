@@ -6,13 +6,17 @@ import os
 from datetime import datetime
 import shutil
 import argparse
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='OBS WebSocket Service')
 parser.add_argument('--obs_host', type=str, default='localhost', help='OBS WebSocket host')
 parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket port')
 parser.add_argument('--obs_password', type=str, default='', help='OBS WebSocket password')
-parser.add_argument('--ws_host', type=str, default='localhost', help='WebSocket server host')
+parser.add_argument('--ws_host', type=str, default='0.0.0.0', help='WebSocket server host')
 parser.add_argument('--ws_port', type=int, default=8765, help='WebSocket server port')
 args = parser.parse_args()
 
@@ -35,48 +39,44 @@ os.makedirs(SNAPSHOT_PATH, exist_ok=True)
 class OBSService:
     def __init__(self):
         # Initialize and connect to OBS when creating an instance
-        self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
-        self.replay_buffer_saved_path = None
+        logging.info("Initializing OBS connection...")
+        try:
+            self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
+            logging.info("OBS connection established successfully.")
+        except Exception as e:
+            logging.error(f"Failed to connect to OBS WebSocket: {e}")
+            raise e
 
     def disconnect(self):
+        logging.info("Disconnecting OBS...")
         self.ws.disconnect()
 
     def start_recording(self):
-        # Set recording path
+        logging.info("Starting recording...")
         self.ws.set_record_directory(recordDirectory=VIDEO_PATH)
-
-        # Start recording
         self.ws.start_record()
 
     def stop_recording(self):
-        # Stop recording and retrieve the output path
+        logging.info("Stopping recording...")
         response = self.ws.stop_record()
         output_path = response.output_path if response.output_path else None
         if output_path:
+            logging.info(f"Recording stopped, file path: {output_path}")
             return output_path
         else:
             raise Exception("Failed to retrieve recording file path")
 
     def toggle_record_pause(self):
-        # Toggle pause/resume for the current video recording session
+        logging.info("Toggling recording pause...")
         self.ws.toggle_record_pause()
 
-    def get_recording_status(self):
-        # Get the recording status
-        return self.ws.get_record_status()
-
     def take_snapshot(self, source_name="Scene", image_format="png"):
-        # Save a screenshot of the given source or scene to the filesystem
+        logging.info("Taking snapshot...")
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         file_name = f"{timestamp}.{image_format}"
         file_path = os.path.join(SNAPSHOT_PATH, file_name)
 
-        # Set default width, height, and quality
-        width = 1920  # Setting a default width that is reasonable
-        height = 1080  # Setting a default height that is reasonable
-        quality = -1  # Use default compression quality
-
-        # Request to save the screenshot using `save_source_screenshot` with the expected parameters
+        width, height, quality = 1920, 1080, -1
         try:
             self.ws.save_source_screenshot(
                 name=source_name,
@@ -86,25 +86,24 @@ class OBSService:
                 height=height,
                 quality=quality
             )
+            logging.info(f"Snapshot taken, saved at: {file_path}")
             return file_path
         except Exception as e:
             raise Exception(f"Failed to take snapshot: {str(e)}")
 
     def start_replay_buffer(self):
-        # Start the replay buffer
+        logging.info("Starting replay buffer...")
         self.ws.start_replay_buffer()
 
     def save_replay_buffer(self):
-        # Save the replay buffer as a highlight
-        self.ws.save_replay_buffer()  # Trigger OBS to save replay buffer
-
-        # Stop the replay buffer after saving
+        logging.info("Saving replay buffer...")
+        self.ws.save_replay_buffer()
         self.ws.stop_replay_buffer()
 
-        # Return the path where the replay buffer was saved (if available)
         response = self.ws.get_record_status()
         output_path = response.output_path if response.output_path else None
         if output_path:
+            logging.info(f"Replay buffer saved, file path: {output_path}")
             return output_path
         else:
             raise Exception("Failed to retrieve replay buffer output path")
