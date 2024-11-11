@@ -5,25 +5,36 @@ import json
 import os
 from datetime import datetime
 import shutil
+import time
 
 # OBS WebSocket connection details
-OBS_HOST = "localhost"
+OBS_HOST = "192.168.50.11"
 OBS_PORT = 4455  # Default port for OBS WebSocket v5.x+
 OBS_PASSWORD = ""  # No password required if authentication is disabled
 
-# Default paths for recordings and clips
+# Default paths for recordings, clips, and snapshots
 BASE_PATH = os.getcwd()
-VIDEO_PATH = os.path.join(BASE_PATH, "Video")
-CLIPS_PATH = os.path.join(BASE_PATH, "Clips")
+VIDEO_PATH = os.path.join(BASE_PATH, "videos")
+CLIPS_PATH = os.path.join(BASE_PATH, "clips")
+SNAPSHOT_PATH = os.path.join(BASE_PATH, "snapshots")
 
 # Ensure directories exist
 os.makedirs(VIDEO_PATH, exist_ok=True)
 os.makedirs(CLIPS_PATH, exist_ok=True)
+os.makedirs(SNAPSHOT_PATH, exist_ok=True)
+
+def get_latest_file_in_directory(directory, prefix="Replay"):
+    files = [f for f in os.listdir(directory) if f.startswith(prefix)]
+    if not files:
+        return None
+    latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(directory, f)))
+    return os.path.join(directory, latest_file)
 
 class OBSService:
     def __init__(self):
         # Initialize and connect to OBS when creating an instance
         self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
+        self.replay_buffer_saved_path = None
 
     def disconnect(self):
         self.ws.disconnect()
@@ -31,12 +42,18 @@ class OBSService:
     def start_recording(self):
         # Set recording path
         self.ws.set_record_directory(recordDirectory=VIDEO_PATH)
+
         # Start recording
         self.ws.start_record()
 
     def stop_recording(self):
-        # Stop recording
-        self.ws.stop_record()
+        # Stop recording and retrieve the output path
+        response = self.ws.stop_record()
+        output_path = response.output_path if response.output_path else None
+        if output_path:
+            return output_path
+        else:
+            raise Exception("Failed to retrieve recording file path")
 
     def toggle_record_pause(self):
         # Toggle pause/resume for the current video recording session
@@ -50,7 +67,7 @@ class OBSService:
         # Save a screenshot of the given source or scene to the filesystem
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         file_name = f"{timestamp}.{image_format}"
-        file_path = os.path.join(BASE_PATH, file_name)
+        file_path = os.path.join(SNAPSHOT_PATH, file_name)
 
         # Set default width, height, and quality
         width = 1920  # Setting a default width that is reasonable
@@ -77,22 +94,30 @@ class OBSService:
 
     def save_replay_buffer(self):
         # Save the replay buffer as a highlight
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        destination_path = os.path.join(CLIPS_PATH, f"highlight_{timestamp}.mp4")
-        default_obs_path = os.path.expanduser("~/Movies")  # Default OBS replay buffer path
-
         try:
             self.ws.save_replay_buffer()  # Trigger OBS to save replay buffer
-            # Stop the replay buffer after saving
-            self.ws.stop_replay_buffer()
+            
+            # Wait briefly to ensure the replay buffer is saved
+            time.sleep(2)
+            
             # Look for the most recent replay file in the default OBS location
-            files = [f for f in os.listdir(default_obs_path) if f.startswith("Replay")]
-            if files:
-                latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(default_obs_path, f)))
-                source_path = os.path.join(default_obs_path, latest_file)
-                shutil.move(source_path, destination_path)
+            default_obs_path = os.path.expanduser("~/Movies")  # Default OBS replay buffer path
+            latest_file = get_latest_file_in_directory(default_obs_path)
+            if latest_file:
+                destination_path = os.path.join(VIDEO_PATH, os.path.basename(latest_file))
+                shutil.move(latest_file, destination_path)
+                
+                # Stop the replay buffer after saving
+                self.ws.stop_replay_buffer()
+                
                 return destination_path
+            else:
+                # Stop the replay buffer if there's an error
+                self.ws.stop_replay_buffer()
+                raise Exception("Failed to retrieve replay buffer output path")
         except Exception as e:
+            # Stop the replay buffer if there's an error
+            self.ws.stop_replay_buffer()
             raise Exception(f"Failed to save replay buffer: {str(e)}")
 
 # WebSocket handler for incoming connections
@@ -109,8 +134,14 @@ async def handle_client(websocket, path):
                     await websocket.send(json.dumps({"status": "Recording started"}))
 
                 elif command == "STOP_RECORDING":
-                    obs_service.stop_recording()
-                    await websocket.send(json.dumps({"status": "Recording stopped"}))
+                    try:
+                        video_path = obs_service.stop_recording()
+                        await websocket.send(json.dumps({
+                            "status": "Recording stopped",
+                            "file_path": video_path
+                        }))
+                    except Exception as e:
+                        await websocket.send(json.dumps({"error": f"Stopping recording failed: {str(e)}"}))
 
                 elif command == "PAUSE_RECORDING":
                     obs_service.toggle_record_pause()
