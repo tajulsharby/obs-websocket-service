@@ -1,25 +1,16 @@
-from obsws_python import ReqClient
-import asyncio
-from aiohttp import web
 import json
+import logging
+import websockets
+import asyncio
 import os
-from datetime import datetime
 import shutil
-import argparse
-
-# Parse command line arguments
-parser = argparse.ArgumentParser(description='OBS WebSocket Service')
-parser.add_argument('--obs_host', type=str, default='localhost', help='OBS WebSocket host')
-parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket port')
-parser.add_argument('--obs_password', type=str, default='', help='OBS WebSocket password')
-parser.add_argument('--ws_host', type=str, default='localhost', help='WebSocket server host')
-parser.add_argument('--ws_port', type=int, default=8765, help='WebSocket server port')
-args = parser.parse_args()
+from datetime import datetime
+from obsws_python import ReqClient
 
 # OBS WebSocket connection details
-OBS_HOST = args.obs_host
-OBS_PORT = args.obs_port
-OBS_PASSWORD = args.obs_password
+OBS_HOST = "localhost"
+OBS_PORT = 4455  # Default port for OBS WebSocket v5.x+
+OBS_PASSWORD = ""  # No password required if authentication is disabled
 
 # Default paths for recordings, clips, and snapshots
 BASE_PATH = os.getcwd()
@@ -32,11 +23,14 @@ os.makedirs(VIDEO_PATH, exist_ok=True)
 os.makedirs(CLIPS_PATH, exist_ok=True)
 os.makedirs(SNAPSHOT_PATH, exist_ok=True)
 
+# Global set to manage connected clients
+clients = set()
+
 class OBSService:
     def __init__(self):
         # Initialize and connect to OBS when creating an instance
         self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
-        self.replay_buffer_saved_path = None
+        self.current_recording_file = None
 
     def disconnect(self):
         self.ws.disconnect()
@@ -44,7 +38,6 @@ class OBSService:
     def start_recording(self):
         # Set recording path
         self.ws.set_record_directory(recordDirectory=VIDEO_PATH)
-
         # Start recording
         self.ws.start_record()
 
@@ -60,10 +53,6 @@ class OBSService:
     def toggle_record_pause(self):
         # Toggle pause/resume for the current video recording session
         self.ws.toggle_record_pause()
-
-    def get_recording_status(self):
-        # Get the recording status
-        return self.ws.get_record_status()
 
     def take_snapshot(self, source_name="Scene", image_format="png"):
         # Save a screenshot of the given source or scene to the filesystem
@@ -96,87 +85,84 @@ class OBSService:
 
     def save_replay_buffer(self):
         # Save the replay buffer as a highlight
-        self.ws.save_replay_buffer()  # Trigger OBS to save replay buffer
-
-        # Stop the replay buffer after saving
-        self.ws.stop_replay_buffer()
-
-        # Return the path where the replay buffer was saved (if available)
-        response = self.ws.get_record_status()
-        output_path = response.output_path if response.output_path else None
-        if output_path:
-            return output_path
+        response = self.ws.save_replay_buffer()
+        if response and response.output_path:
+            return response.output_path
         else:
             raise Exception("Failed to retrieve replay buffer output path")
 
-# WebSocket handler for incoming connections using aiohttp
-async def handle_client(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-
+# WebSocket handler for incoming connections
+async def handle_client(websocket, path):
+    clients.add(websocket)
+    logging.info(f"Client connected: {websocket.remote_address}")
     obs_service = OBSService()
+
     try:
-        async for msg in ws:
-            if msg.type == web.WSMsgType.TEXT:
-                try:
-                    data = json.loads(msg.data)
-                    command = data.get("command")
+        async for message in websocket:
+            try:
+                data = json.loads(message)
+                command = data.get("command")
 
-                    if command == "START_RECORDING":
-                        obs_service.start_recording()
-                        await ws.send_str(json.dumps({"status": "Recording started"}))
+                if command == "START_RECORDING":
+                    obs_service.start_recording()
+                    await websocket.send(json.dumps({"status": "Recording started"}))
 
-                    elif command == "STOP_RECORDING":
-                        try:
-                            video_path = obs_service.stop_recording()
-                            await ws.send_str(json.dumps({
-                                "status": "Recording stopped",
-                                "file_path": video_path
-                            }))
-                        except Exception as e:
-                            await ws.send_str(json.dumps({"error": f"Stopping recording failed: {str(e)}"}))
+                elif command == "STOP_RECORDING":
+                    try:
+                        video_path = obs_service.stop_recording()
+                        await websocket.send(json.dumps({
+                            "status": "Recording stopped",
+                            "file_path": video_path
+                        }))
+                    except Exception as e:
+                        await websocket.send(json.dumps({"error": f"Stopping recording failed: {str(e)}"}))
 
-                    elif command == "PAUSE_RECORDING":
-                        obs_service.toggle_record_pause()
-                        await ws.send_str(json.dumps({"status": "Toggled recording pause state"}))
+                elif command == "PAUSE_RECORDING":
+                    obs_service.toggle_record_pause()
+                    await websocket.send(json.dumps({"status": "Toggled recording pause state"}))
 
-                    elif command == "TAKE_SNAPSHOT":
-                        try:
-                            file_path = obs_service.take_snapshot()
-                            await ws.send_str(json.dumps({
-                                "status": "Snapshot taken",
-                                "file_path": file_path
-                            }))
-                        except Exception as e:
-                            await ws.send_str(json.dumps({"error": f"Snapshot failed: {str(e)}"}))
+                elif command == "TAKE_SNAPSHOT":
+                    try:
+                        file_path = obs_service.take_snapshot()
+                        await websocket.send(json.dumps({
+                            "status": "Snapshot taken",
+                            "file_path": file_path
+                        }))
+                    except Exception as e:
+                        await websocket.send(json.dumps({"error": f"Snapshot failed: {str(e)}"}))
 
-                    elif command == "START_REPLAY_BUFFER":
-                        obs_service.start_replay_buffer()
-                        await ws.send_str(json.dumps({"status": "Replay buffer started"}))
+                elif command == "START_REPLAY_BUFFER":
+                    obs_service.start_replay_buffer()
+                    await websocket.send(json.dumps({"status": "Replay buffer started"}))
 
-                    elif command == "SAVE_REPLAY_BUFFER":
-                        try:
-                            file_path = obs_service.save_replay_buffer()
-                            await ws.send_str(json.dumps({
-                                "status": "Replay buffer saved",
-                                "file_path": file_path
-                            }))
-                        except Exception as e:
-                            await ws.send_str(json.dumps({"error": f"Saving replay buffer failed: {str(e)}"}))
+                elif command == "SAVE_REPLAY_BUFFER":
+                    try:
+                        replay_path = obs_service.save_replay_buffer()
+                        await websocket.send(json.dumps({
+                            "status": "Replay buffer saved",
+                            "file_path": replay_path
+                        }))
+                    except Exception as e:
+                        await websocket.send(json.dumps({"error": f"Saving replay buffer failed: {str(e)}"}))
 
-                    else:
-                        await ws.send_str(json.dumps({"error": "Unknown command"}))
-                except json.JSONDecodeError:
-                    await ws.send_str(json.dumps({"error": "Invalid message format"}))
+                else:
+                    await websocket.send(json.dumps({"error": "Unknown command"}))
+            except json.JSONDecodeError:
+                await websocket.send(json.dumps({"error": "Invalid message format"}))
 
+    except websockets.ConnectionClosed:
+        logging.info(f"Connection closed: {websocket.remote_address}")
     finally:
+        clients.remove(websocket)
         obs_service.disconnect()
+        logging.info(f"Client disconnected: {websocket.remote_address}")
 
-    return ws
-
-# Start the WebSocket server using aiohttp
-app = web.Application()
-app.router.add_get('/', handle_client)
+# Start the WebSocket server
+async def start_server():
+    async with websockets.serve(handle_client, "", 8765):
+        logging.info("WebSocket server started at ws://localhost:8765")
+        await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
-    web.run_app(app, host=args.ws_host, port=args.ws_port)
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(start_server())

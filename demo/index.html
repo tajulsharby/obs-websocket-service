@@ -30,7 +30,10 @@
     <div id="console"></div>
 
     <script>
-        const ws = new WebSocket('ws://localhost:8765');
+        const wsHost = prompt("Enter WebSocket server host (default: localhost):", "localhost");
+        const wsPort = prompt("Enter WebSocket server port (default: 8765):", "8765");
+        const wsUrl = `ws://${wsHost}:${wsPort}`;
+        const ws = new WebSocket(wsUrl);
         const consoleDiv = document.getElementById('console');
 
         ws.onopen = () => {
@@ -47,11 +50,11 @@
         };
 
         ws.onerror = (error) => {
-            logToConsole('WebSocket Error: ' + error);
+            logToConsole('WebSocket Error: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
         };
 
-        ws.onclose = () => {
-            logToConsole('WebSocket connection closed.');
+        ws.onclose = (event) => {
+            logToConsole(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
         };
 
         document.getElementById('startRecording').addEventListener('click', () => {
