@@ -8,9 +8,9 @@ async def command_handler(websocket, path):
         await websocket.send(response)
 
 async def main():
-    # Change "192.168.50.11" and "8765" to your server IP and port
-    async with websockets.serve(command_handler, "192.168.50.11", 8765):
-        print("WebSocket server started")
+    # Use "0.0.0.0" to listen on all network interfaces, allowing external connections.
+    async with websockets.serve(command_handler, "0.0.0.0", 8765):
+        print("WebSocket server started on all network interfaces")
         await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
