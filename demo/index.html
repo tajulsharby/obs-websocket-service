@@ -35,32 +35,32 @@
         const apiPort = prompt("Enter API server port (default: 8080):", "8080");
         const baseUrl = `http://${apiHost}:${apiPort}`;
         const consoleDiv = document.getElementById('console');
-
+    
         // Event listeners for buttons
         document.getElementById('startRecording').addEventListener('click', () => {
             sendApiRequest('/start_recording');
         });
-
+    
         document.getElementById('stopRecording').addEventListener('click', () => {
             sendApiRequest('/stop_recording');
         });
-
+    
         document.getElementById('pauseRecording').addEventListener('click', () => {
             sendApiRequest('/pause_recording');
         });
-
+    
         document.getElementById('takeSnapshot').addEventListener('click', () => {
             sendApiRequest('/take_snapshot');
         });
-
+    
         document.getElementById('startReplayBuffer').addEventListener('click', () => {
             sendApiRequest('/start_replay_buffer');
         });
-
+    
         document.getElementById('saveReplayBuffer').addEventListener('click', () => {
             sendApiRequest('/save_replay_buffer');
         });
-
+    
         // Function to send API request
         async function sendApiRequest(endpoint) {
             try {
@@ -70,7 +70,7 @@
                         'Content-Type': 'application/json',
                     },
                 });
-
+    
                 if (response.ok) {
                     const data = await response.json();
                     logToConsole(`Server: ${JSON.stringify(data)}`);
@@ -79,10 +79,10 @@
                     logToConsole(`Error: ${JSON.stringify(errorData)}`);
                 }
             } catch (error) {
-                logToConsole(`Request failed: ${error}`);
+                logToConsole(`Request failed: ${error.message}`);
             }
         }
-
+    
         // Function to log messages to console
         function logToConsole(message) {
             const p = document.createElement('p');

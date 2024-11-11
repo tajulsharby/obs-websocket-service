@@ -162,16 +162,18 @@ app.router.add_post('/take_snapshot', take_snapshot)
 app.router.add_post('/start_replay_buffer', start_replay_buffer)
 app.router.add_post('/save_replay_buffer', save_replay_buffer)
 
-# Setup CORS
-cors = aiohttp_cors.setup(app)
-for route in list(app.router.routes()):
-    cors.add(route, {
-        "*": aiohttp_cors.ResourceOptions(
+# Configure default CORS settings.
+cors = aiohttp_cors.setup(app, defaults={
+    "*": aiohttp_cors.ResourceOptions(
             allow_credentials=True,
             expose_headers="*",
-            allow_headers="*"
+            allow_headers="*",
         )
-    })
+})
+
+# Apply CORS to all routes
+for route in list(app.router.routes()):
+    cors.add(route)
 
 if __name__ == "__main__":
     web.run_app(app, host=args.api_host, port=args.api_port)
