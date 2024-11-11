@@ -5,21 +5,12 @@ import json
 import os
 from datetime import datetime
 import shutil
-import argparse
-
-# Parse command line arguments
-parser = argparse.ArgumentParser(description='OBS WebSocket Service')
-parser.add_argument('--obs_host', type=str, default='localhost', help='OBS WebSocket host')
-parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket port')
-parser.add_argument('--obs_password', type=str, default='', help='OBS WebSocket password')
-parser.add_argument('--ws_host', type=str, default='localhost', help='WebSocket server host')
-parser.add_argument('--ws_port', type=int, default=8765, help='WebSocket server port')
-args = parser.parse_args()
+import time
 
 # OBS WebSocket connection details
-OBS_HOST = args.obs_host
-OBS_PORT = args.obs_port
-OBS_PASSWORD = args.obs_password
+OBS_HOST = "localhost"
+OBS_PORT = 4455  # Default port for OBS WebSocket v5.x+
+OBS_PASSWORD = ""  # No password required if authentication is disabled
 
 # Default paths for recordings, clips, and snapshots
 BASE_PATH = os.getcwd()
@@ -31,6 +22,13 @@ SNAPSHOT_PATH = os.path.join(BASE_PATH, "snapshots")
 os.makedirs(VIDEO_PATH, exist_ok=True)
 os.makedirs(CLIPS_PATH, exist_ok=True)
 os.makedirs(SNAPSHOT_PATH, exist_ok=True)
+
+def get_latest_file_in_directory(directory, prefix="Replay"):
+    files = [f for f in os.listdir(directory) if f.startswith(prefix)]
+    if not files:
+        return None
+    latest_file = max(files, key=lambda f: os.path.getmtime(os.path.join(directory, f)))
+    return os.path.join(directory, latest_file)
 
 class OBSService:
     def __init__(self):
@@ -96,18 +94,31 @@ class OBSService:
 
     def save_replay_buffer(self):
         # Save the replay buffer as a highlight
-        self.ws.save_replay_buffer()  # Trigger OBS to save replay buffer
-
-        # Stop the replay buffer after saving
-        self.ws.stop_replay_buffer()
-
-        # Return the path where the replay buffer was saved (if available)
-        response = self.ws.get_record_status()
-        output_path = response.output_path if response.output_path else None
-        if output_path:
-            return output_path
-        else:
-            raise Exception("Failed to retrieve replay buffer output path")
+        try:
+            self.ws.save_replay_buffer()  # Trigger OBS to save replay buffer
+            
+            # Wait briefly to ensure the replay buffer is saved
+            time.sleep(2)
+            
+            # Look for the most recent replay file in the default OBS location
+            default_obs_path = os.path.expanduser("~/Movies")  # Default OBS replay buffer path
+            latest_file = get_latest_file_in_directory(default_obs_path)
+            if latest_file:
+                destination_path = os.path.join(VIDEO_PATH, os.path.basename(latest_file))
+                shutil.move(latest_file, destination_path)
+                
+                # Stop the replay buffer after saving
+                self.ws.stop_replay_buffer()
+                
+                return destination_path
+            else:
+                # Stop the replay buffer if there's an error
+                self.ws.stop_replay_buffer()
+                raise Exception("Failed to retrieve replay buffer output path")
+        except Exception as e:
+            # Stop the replay buffer if there's an error
+            self.ws.stop_replay_buffer()
+            raise Exception(f"Failed to save replay buffer: {str(e)}")
 
 # WebSocket handler for incoming connections
 async def handle_client(websocket, path):
@@ -170,8 +181,8 @@ async def handle_client(websocket, path):
 
 # Start the WebSocket server
 async def start_server():
-    server = await websockets.serve(handle_client, args.ws_host, args.ws_port)
-    print(f"WebSocket server started at ws://{args.ws_host}:{args.ws_port}")
+    server = await websockets.serve(handle_client, "localhost", 8765)
+    print("WebSocket server started at ws://localhost:8765")
     await server.wait_closed()
 
 if __name__ == "__main__":

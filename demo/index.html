@@ -14,63 +14,45 @@
             overflow-y: auto;
             font-family: monospace;
         }
-        button, input {
+        button {
             margin: 5px;
         }
     </style>
 </head>
 <body>
     <h1>OBS Control Demo</h1>
-    <div>
-        <label for="webSocketIP">WebSocket IP:</label>
-        <input type="text" id="webSocketIP" placeholder="localhost">
-        <label for="webSocketPort">Port:</label>
-        <input type="text" id="webSocketPort" placeholder="8765">
-        <button id="connectWebSocket">Connect</button>
-    </div>
-    <button id="startRecording" disabled>Start Recording</button>
-    <button id="stopRecording" disabled>Stop Recording</button>
-    <button id="pauseRecording" disabled>Pause Recording</button>
-    <button id="takeSnapshot" disabled>Take Snapshot</button>
-    <button id="startReplayBuffer" disabled>Start Replay Buffer</button>
-    <button id="saveReplayBuffer" disabled>Save Replay Buffer</button>
+    <button id="startRecording">Start Recording</button>
+    <button id="stopRecording">Stop Recording</button>
+    <button id="pauseRecording">Pause Recording</button>
+    <button id="takeSnapshot">Take Snapshot</button>
+    <button id="startReplayBuffer">Start Replay Buffer</button>
+    <button id="saveReplayBuffer">Save Replay Buffer</button>
     <div id="console"></div>
 
     <script>
-        let ws;
+        const ws = new WebSocket('ws://localhost:8765');
         const consoleDiv = document.getElementById('console');
-        const connectButton = document.getElementById('connectWebSocket');
 
-        connectButton.addEventListener('click', () => {
-            const ip = document.getElementById('webSocketIP').value || 'localhost';
-            const port = document.getElementById('webSocketPort').value || '8765';
-            const wsURL = `ws://${ip}:${port}`;
-            
-            ws = new WebSocket(wsURL);
-            
-            ws.onopen = () => {
-                logToConsole('WebSocket connection established.');
-                setButtonsState(true);
-            };
+        ws.onopen = () => {
+            logToConsole('WebSocket connection established.');
+        };
 
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.file_path) {
-                    logToConsole('Server: ' + data.status + ', File Path: ' + data.file_path);
-                } else {
-                    logToConsole('Server: ' + event.data);
-                }
-            };
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.file_path) {
+                logToConsole('Server: ' + data.status + ', File Path: ' + data.file_path);
+            } else {
+                logToConsole('Server: ' + event.data);
+            }
+        };
 
-            ws.onerror = (error) => {
-                logToConsole('WebSocket Error: ' + error);
-            };
+        ws.onerror = (error) => {
+            logToConsole('WebSocket Error: ' + error);
+        };
 
-            ws.onclose = () => {
-                logToConsole('WebSocket connection closed.');
-                setButtonsState(false);
-            };
-        });
+        ws.onclose = () => {
+            logToConsole('WebSocket connection closed.');
+        };
 
         document.getElementById('startRecording').addEventListener('click', () => {
             sendCommand({ command: 'START_RECORDING' });
@@ -97,7 +79,7 @@
         });
 
         function sendCommand(command) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(command));
                 logToConsole('Client: Sent command - ' + JSON.stringify(command));
             } else {
@@ -110,15 +92,6 @@
             p.textContent = message;
             consoleDiv.appendChild(p);
             consoleDiv.scrollTop = consoleDiv.scrollHeight;
-        }
-
-        function setButtonsState(enabled) {
-            document.getElementById('startRecording').disabled = !enabled;
-            document.getElementById('stopRecording').disabled = !enabled;
-            document.getElementById('pauseRecording').disabled = !enabled;
-            document.getElementById('takeSnapshot').disabled = !enabled;
-            document.getElementById('startReplayBuffer').disabled = !enabled;
-            document.getElementById('saveReplayBuffer').disabled = !enabled;
         }
     </script>
 </body>
