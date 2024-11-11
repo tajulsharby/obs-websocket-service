@@ -7,7 +7,7 @@ from datetime import datetime
 import shutil
 import argparse
 
-# Parse command line arguments
+# Parse command line arguments for connection
 parser = argparse.ArgumentParser(description='OBS WebSocket Service')
 parser.add_argument('--obs_host', type=str, default='localhost', help='OBS WebSocket host')
 parser.add_argument('--obs_port', type=int, default=4455, help='OBS WebSocket port')
