@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 from aiohttp import web
-from obsws_python import ReqClient
+from obsws_python import ReqClient, events
 import os
 from datetime import datetime
 
@@ -41,6 +41,7 @@ class OBSService:
         logging.info("Initializing OBS connection...")
         try:
             self.ws = ReqClient(host=OBS_HOST, port=OBS_PORT, password=OBS_PASSWORD)
+            self.ws.register_event(self.on_replay_buffer_saved, events.ReplayBufferSaved)
             logging.info("OBS connection established successfully.")
         except Exception as e:
             logging.error(f"Failed to connect to OBS WebSocket: {e}")
@@ -94,18 +95,31 @@ class OBSService:
         logging.info("Starting replay buffer...")
         self.ws.start_replay_buffer()
 
-    def save_replay_buffer(self):
+    async def save_replay_buffer(self):
         logging.info("Saving replay buffer...")
         self.ws.save_replay_buffer()
-        self.ws.stop_replay_buffer()
+        
+        # Wait for the ReplayBufferSaved event to get the saved path
+        try:
+            saved_path = await self.wait_for_replay_buffer_saved()
+            logging.info(f"Replay buffer saved, file path: {saved_path}")
+            return saved_path
+        except Exception as e:
+            raise Exception(f"Failed to save replay buffer: {str(e)}")
 
-        response = self.ws.get_record_status()
-        output_path = response.output_path if response.output_path else None
-        if output_path:
-            logging.info(f"Replay buffer saved, file path: {output_path}")
-            return output_path
-        else:
-            raise Exception("Failed to retrieve replay buffer output path")
+    async def wait_for_replay_buffer_saved(self):
+        future = asyncio.get_event_loop().create_future()
+
+        def on_replay_buffer_saved(event):
+            saved_path = event.datain['savedReplayPath']
+            future.set_result(saved_path)
+
+        self.ws.register_event(on_replay_buffer_saved, events.ReplayBufferSaved)
+        return await future
+
+    def on_replay_buffer_saved(self, event):
+        saved_path = event.datain['savedReplayPath']
+        logging.info(f"Replay buffer saved at: {saved_path}")
 
 # WebSocket handler for incoming connections using aiohttp
 async def handle_client(request):
@@ -154,7 +168,7 @@ async def handle_client(request):
 
                     elif command == "SAVE_REPLAY_BUFFER":
                         try:
-                            file_path = obs_service.save_replay_buffer()
+                            file_path = await obs_service.save_replay_buffer()
                             await ws.send_str(json.dumps({
                                 "status": "Replay buffer saved",
                                 "file_path": file_path
