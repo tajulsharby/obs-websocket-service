@@ -69,6 +69,11 @@
 
       <button id="startRecordingBtn" disabled>Start Recording</button>
       <button id="stopRecordingBtn" disabled>Stop Recording</button>
+      <button id="pauseResumeBtn" disabled>Pause Recording</button>
+      <button id="takeSnapshotBtn" disabled>Take Snapshot</button>
+      <button id="startReplayBufferBtn" disabled>Start Replay Buffer</button>
+      <button id="stopReplayBufferBtn" disabled>Stop Replay Buffer</button>
+      <button id="saveReplayBufferBtn" disabled>Save Replay Buffer</button>
     </div>
 
     <div id="console">
@@ -78,11 +83,18 @@
 
   <script>
     let websocket = null;
+    let instanceId = null;
+    let isRecordingPaused = false;
 
     const connectBtn = document.getElementById('connectBtn');
     const disconnectBtn = document.getElementById('disconnectBtn');
     const startRecordingBtn = document.getElementById('startRecordingBtn');
     const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+    const pauseResumeBtn = document.getElementById('pauseResumeBtn');
+    const takeSnapshotBtn = document.getElementById('takeSnapshotBtn');
+    const startReplayBufferBtn = document.getElementById('startReplayBufferBtn');
+    const stopReplayBufferBtn = document.getElementById('stopReplayBufferBtn');
+    const saveReplayBufferBtn = document.getElementById('saveReplayBufferBtn');
     const ipAddressInput = document.getElementById('ipAddress');
     const portInput = document.getElementById('port');
     const consoleOutput = document.getElementById('console');
@@ -101,7 +113,7 @@
 
     function generateUUID() {
       // Generate a simple UUID for command_uid
-      return 'xxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
@@ -116,14 +128,36 @@
 
       websocket.onopen = () => {
         addToConsole('Connected to WebSocket server.', 'success');
-        connectBtn.disabled = true;
-        disconnectBtn.disabled = false;
-        startRecordingBtn.disabled = false;
-        stopRecordingBtn.disabled = false;
+        // Send CONNECT_WEBSOCKET command to obtain instance_id
+        const command = {
+          command: 'CONNECT_WEBSOCKET',
+          command_uid: generateUUID(),
+          parameter: {}
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
       };
 
       websocket.onmessage = (event) => {
         addToConsole(`Received: ${event.data}`);
+        const response = JSON.parse(event.data);
+        if (response.status === 'success') {
+          if (response.data && response.data.instance_id) {
+            instanceId = response.data.instance_id;
+            // Enable buttons after successful connection
+            connectBtn.disabled = true;
+            disconnectBtn.disabled = false;
+            startRecordingBtn.disabled = false;
+            stopRecordingBtn.disabled = false;
+            pauseResumeBtn.disabled = false;
+            takeSnapshotBtn.disabled = false;
+            startReplayBufferBtn.disabled = false;
+            stopReplayBufferBtn.disabled = false;
+            saveReplayBufferBtn.disabled = false;
+          }
+        } else {
+          addToConsole(`Error: ${response.message}`, 'error');
+        }
       };
 
       websocket.onclose = () => {
@@ -132,6 +166,14 @@
         disconnectBtn.disabled = true;
         startRecordingBtn.disabled = true;
         stopRecordingBtn.disabled = true;
+        pauseResumeBtn.disabled = true;
+        takeSnapshotBtn.disabled = true;
+        startReplayBufferBtn.disabled = true;
+        stopReplayBufferBtn.disabled = true;
+        saveReplayBufferBtn.disabled = true;
+        instanceId = null;
+        isRecordingPaused = false;
+        pauseResumeBtn.textContent = 'Pause Recording';
       };
 
       websocket.onerror = (error) => {
@@ -140,7 +182,15 @@
     });
 
     disconnectBtn.addEventListener('click', () => {
-      if (websocket) {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'DISCONNECT_WEBSOCKET',
+          command_uid: generateUUID(),
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+        // Close the WebSocket after sending the command
         websocket.close();
       }
     });
@@ -150,10 +200,12 @@
         const command = {
           command: 'START_RECORDING',
           command_uid: generateUUID(),
-          parameter: {}
+          instance_id: instanceId
         };
         websocket.send(JSON.stringify(command));
         addToConsole(`Sent: ${JSON.stringify(command)}`);
+        isRecordingPaused = false;
+        pauseResumeBtn.textContent = 'Pause Recording';
       } else {
         addToConsole('WebSocket is not connected.', 'error');
       }
@@ -164,7 +216,92 @@
         const command = {
           command: 'STOP_RECORDING',
           command_uid: generateUUID(),
-          parameter: {}
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+        isRecordingPaused = false;
+        pauseResumeBtn.textContent = 'Pause Recording';
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
+    pauseResumeBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        let command;
+        if (!isRecordingPaused) {
+          command = {
+            command: 'PAUSE_RECORDING',
+            command_uid: generateUUID(),
+            instance_id: instanceId
+          };
+          isRecordingPaused = true;
+          pauseResumeBtn.textContent = 'Resume Recording';
+        } else {
+          command = {
+            command: 'RESUME_RECORDING',
+            command_uid: generateUUID(),
+            instance_id: instanceId
+          };
+          isRecordingPaused = false;
+          pauseResumeBtn.textContent = 'Pause Recording';
+        }
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
+    takeSnapshotBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'SAVE_IMAGE_SNAPSHOT',
+          command_uid: generateUUID(),
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
+    startReplayBufferBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'START_REPLAY_BUFFER',
+          command_uid: generateUUID(),
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
+    stopReplayBufferBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'STOP_REPLAY_BUFFER',
+          command_uid: generateUUID(),
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
+    saveReplayBufferBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'SAVE_REPLAY_BUFFER',
+          command_uid: generateUUID(),
+          instance_id: instanceId
         };
         websocket.send(JSON.stringify(command));
         addToConsole(`Sent: ${JSON.stringify(command)}`);

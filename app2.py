@@ -7,6 +7,7 @@ import uuid
 import obsws_python as obs
 import websockets
 import concurrent.futures
+import base64
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -178,16 +179,14 @@ async def handle_start_recording(instance_id, command_uid):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(executor, obs_client.start_record)
         clients[instance_id]['state']['recording_start_time'] = datetime.datetime.now()
-        # Get the recording filename
-        resp = await loop.run_in_executor(executor, obs_client.get_record_status)
-        file_path = resp.recording_filename
+        # Recording filename may not be available
         response = {
             "status": "success",
             "command_uid": command_uid,
             "instance_id": instance_id,
             "message": "Video recording started successfully",
             "data": {
-                "file_path": file_path,
+                # "file_path": "",  # Optional, remove or set to None
                 "datetime": datetime.datetime.now().isoformat()
             }
         }
@@ -212,8 +211,6 @@ async def handle_stop_recording(instance_id, command_uid):
     try:
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(executor, obs_client.stop_record)
-        resp = await loop.run_in_executor(executor, obs_client.get_record_status)
-        file_path = resp.recording_filename
         start_time = clients[instance_id]['state'].get('recording_start_time')
         if start_time:
             duration = (datetime.datetime.now() - start_time).total_seconds()
@@ -226,7 +223,7 @@ async def handle_stop_recording(instance_id, command_uid):
             "instance_id": instance_id,
             "message": "Video recording stopped successfully",
             "data": {
-                "file_path": file_path,
+                # "file_path": "",  # Optional, remove or set to None
                 "duration": duration,
                 "datetime": datetime.datetime.now().isoformat()
             }
@@ -240,6 +237,7 @@ async def handle_stop_recording(instance_id, command_uid):
             "message": f"Failed to stop recording: {e}"
         }
     return response
+
 
 async def handle_pause_recording(instance_id, command_uid):
     if obs_client is None:
@@ -348,11 +346,22 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     try:
         loop = asyncio.get_event_loop()
-        resp = await loop.run_in_executor(executor, obs_client.get_current_preview_scene)
-        source_name = resp.current_program_scene_name
-        # Get a screenshot of the source
-        screenshot_resp = await loop.run_in_executor(executor, obs_client.get_source_screenshot, source_name, 'png', '', 100)
-        img_data = screenshot_resp.image_data
+        # Use GetCurrentProgramScene instead
+        resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
+        scene_name = resp.current_program_scene_name
+        # Get a screenshot of the scene
+        screenshot_resp = await loop.run_in_executor(
+            executor,
+            obs_client.get_source_screenshot,
+            sourceName=scene_name,
+            imageFormat='png',
+            imageWidth=None,
+            imageHeight=None,
+            imageCompressionQuality=100
+        )
+        img_data_base64 = screenshot_resp.image_data
+        # Decode the base64 image data
+        img_data = base64.b64decode(img_data_base64)
         # Save the image to a file
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
         filepath = os.path.join(SNAPSHOT_DIR, filename)
