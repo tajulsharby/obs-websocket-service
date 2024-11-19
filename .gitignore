@@ -3,6 +3,7 @@ Video/
 Clips/
 Snapshots/
 Logs/
+obs-websocket-env/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
