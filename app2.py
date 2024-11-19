@@ -68,7 +68,7 @@ def disconnect_from_obs():
         obs_client = None
         logging.info("Disconnected from OBS Studio.")
 
-async def handle_client(websocket, path):
+async def handle_client(websocket):
     # Assign a unique instance ID to the client
     instance_id = str(uuid.uuid4())
     clients[instance_id] = {

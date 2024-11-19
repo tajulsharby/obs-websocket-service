@@ -1,106 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OBS Control Demo</title>
-    <style>
-        #console {
-            width: 100%;
-            height: 200px;
-            background-color: #222;
-            color: #fff;
-            padding: 10px;
-            overflow-y: auto;
-            font-family: monospace;
-        }
-        button {
-            margin: 5px;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>OBS WebSocket Client</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+    }
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .controls label {
+      font-weight: bold;
+    }
+    .controls input {
+      padding: 5px;
+      font-size: 16px;
+    }
+    .controls button {
+      padding: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #console {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f1f1f1;
+      height: 200px;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      font-family: monospace;
+    }
+    #console p {
+      margin: 0;
+    }
+    .connected {
+      color: green;
+    }
+    .disconnected {
+      color: red;
+    }
+  </style>
 </head>
 <body>
-    <h1>OBS Control Demo</h1>
-    <button id="startRecording">Start Recording</button>
-    <button id="stopRecording">Stop Recording</button>
-    <button id="pauseRecording">Pause Recording</button>
-    <button id="takeSnapshot">Take Snapshot</button>
-    <button id="startReplayBuffer">Start Replay Buffer</button>
-    <button id="saveReplayBuffer">Save Replay Buffer</button>
-    <div id="console"></div>
+  <div class="container">
+    <h1>OBS WebSocket Client</h1>
+    <div class="controls">
+      <label for="ipAddress">WebSocket Server IP Address:</label>
+      <input type="text" id="ipAddress" value="localhost">
 
-    <script>
-        // Prompt user for WebSocket server host and port
-        const wsHost = prompt("Enter WebSocket server host (default: localhost):", "192.168.100.30");
-        const wsPort = prompt("Enter WebSocket server port (default: 8765):", "8765");
-        const wsUrl = `ws://${wsHost}:${wsPort}`;
-        const ws = new WebSocket(wsUrl);
-        const consoleDiv = document.getElementById('console');
+      <label for="port">WebSocket Server Port:</label>
+      <input type="number" id="port" value="8184">
 
-        ws.onopen = () => {
-            logToConsole('WebSocket connection established.');
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+
+      <hr>
+
+      <button id="startRecordingBtn" disabled>Start Recording</button>
+      <button id="stopRecordingBtn" disabled>Stop Recording</button>
+    </div>
+
+    <div id="console">
+      <p><strong>Console Output:</strong></p>
+    </div>
+  </div>
+
+  <script>
+    let websocket = null;
+
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const startRecordingBtn = document.getElementById('startRecordingBtn');
+    const stopRecordingBtn = document.getElementById('stopRecordingBtn');
+    const ipAddressInput = document.getElementById('ipAddress');
+    const portInput = document.getElementById('port');
+    const consoleOutput = document.getElementById('console');
+
+    function addToConsole(message, type = 'info') {
+      const p = document.createElement('p');
+      p.textContent = message;
+      if (type === 'error') {
+        p.style.color = 'red';
+      } else if (type === 'success') {
+        p.style.color = 'green';
+      }
+      consoleOutput.appendChild(p);
+      consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
+
+    function generateUUID() {
+      // Generate a simple UUID for command_uid
+      return 'xxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        let r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    connectBtn.addEventListener('click', () => {
+      const ipAddress = ipAddressInput.value.trim();
+      const port = portInput.value.trim();
+      const wsUri = `ws://${ipAddress}:${port}`;
+
+      websocket = new WebSocket(wsUri);
+
+      websocket.onopen = () => {
+        addToConsole('Connected to WebSocket server.', 'success');
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        startRecordingBtn.disabled = false;
+        stopRecordingBtn.disabled = false;
+      };
+
+      websocket.onmessage = (event) => {
+        addToConsole(`Received: ${event.data}`);
+      };
+
+      websocket.onclose = () => {
+        addToConsole('Disconnected from WebSocket server.', 'error');
+        connectBtn.disabled = false;
+        disconnectBtn.disabled = true;
+        startRecordingBtn.disabled = true;
+        stopRecordingBtn.disabled = true;
+      };
+
+      websocket.onerror = (error) => {
+        addToConsole(`WebSocket error: ${error}`, 'error');
+      };
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      if (websocket) {
+        websocket.close();
+      }
+    });
+
+    startRecordingBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'START_RECORDING',
+          command_uid: generateUUID(),
+          parameter: {}
         };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
 
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.file_path) {
-                    logToConsole('Server: ' + data.status + ', File Path: ' + data.file_path);
-                } else {
-                    logToConsole('Server: ' + JSON.stringify(data));
-                }
-            } catch (e) {
-                logToConsole('Server: ' + event.data);
-            }
+    stopRecordingBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'STOP_RECORDING',
+          command_uid: generateUUID(),
+          parameter: {}
         };
-
-        ws.onerror = (error) => {
-            logToConsole('WebSocket Error: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
-        };
-
-        ws.onclose = (event) => {
-            logToConsole(`WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}`);
-        };
-
-        document.getElementById('startRecording').addEventListener('click', () => {
-            sendCommand({ command: 'START_RECORDING' });
-        });
-
-        document.getElementById('stopRecording').addEventListener('click', () => {
-            sendCommand({ command: 'STOP_RECORDING' });
-        });
-
-        document.getElementById('pauseRecording').addEventListener('click', () => {
-            sendCommand({ command: 'PAUSE_RECORDING' });
-        });
-
-        document.getElementById('takeSnapshot').addEventListener('click', () => {
-            sendCommand({ command: 'TAKE_SNAPSHOT' });
-        });
-
-        document.getElementById('startReplayBuffer').addEventListener('click', () => {
-            sendCommand({ command: 'START_REPLAY_BUFFER' });
-        });
-
-        document.getElementById('saveReplayBuffer').addEventListener('click', () => {
-            sendCommand({ command: 'SAVE_REPLAY_BUFFER' });
-        });
-
-        function sendCommand(command) {
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify(command));
-                logToConsole('Client: Sent command - ' + JSON.stringify(command));
-            } else {
-                logToConsole('WebSocket is not connected.');
-            }
-        }
-
-        function logToConsole(message) {
-            const p = document.createElement('p');
-            p.textContent = message;
-            consoleDiv.appendChild(p);
-            consoleDiv.scrollTop = consoleDiv.scrollHeight;
-        }
-    </script>
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+  </script>
 </body>
 </html>
