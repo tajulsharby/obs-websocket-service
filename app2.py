@@ -234,7 +234,7 @@ async def start_server():
     started = False
     while not started:
         try:
-            async with websockets.serve(handle_client, "0.0.0.0", port, origins=['*']):
+            async with websockets.serve(handle_client, "0.0.0.0", port, origins=None):
                 logging.info(f"WebSocket server started on port {port}")
                 await asyncio.Future()  # Run forever
                 started = True
