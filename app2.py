@@ -105,7 +105,18 @@ async def process_message(instance_id, message):
             response = await handle_start_recording(instance_id, command_uid)
         elif command == 'STOP_RECORDING':
             response = await handle_stop_recording(instance_id, command_uid)
-        # ... Include other commands here ...
+        elif command == 'PAUSE_RECORDING':
+            response = await handle_pause_recording(instance_id, command_uid)
+        elif command == 'RESUME_RECORDING':
+            response = await handle_resume_recording(instance_id, command_uid)
+        elif command == 'SAVE_IMAGE_SNAPSHOT':
+            response = await handle_save_image_snapshot(instance_id, command_uid)
+        elif command == 'START_REPLAY_BUFFER':
+            response = await handle_start_replay_buffer(instance_id, command_uid)
+        elif command == 'STOP_REPLAY_BUFFER':
+            response = await handle_stop_replay_buffer(instance_id, command_uid)
+        elif command == 'SAVE_REPLAY_BUFFER':
+            response = await handle_save_replay_buffer(instance_id, command_uid)
         else:
             response = {
                 "status": "error",
@@ -167,12 +178,16 @@ async def handle_start_recording(instance_id, command_uid):
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(executor, obs_client.start_record)
         clients[instance_id]['state']['recording_start_time'] = datetime.datetime.now()
+        # Get the recording filename
+        resp = await loop.run_in_executor(executor, obs_client.get_record_status)
+        file_path = resp.recording_filename
         response = {
             "status": "success",
             "command_uid": command_uid,
             "instance_id": instance_id,
             "message": "Video recording started successfully",
             "data": {
+                "file_path": file_path,
                 "datetime": datetime.datetime.now().isoformat()
             }
         }
@@ -226,7 +241,248 @@ async def handle_stop_recording(instance_id, command_uid):
         }
     return response
 
-# Implement other handler functions similarly...
+async def handle_pause_recording(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        record_status = await loop.run_in_executor(executor, obs_client.get_record_status)
+        if not record_status.output_active:
+            return {
+                "status": "error",
+                "command_uid": command_uid,
+                "instance_id": instance_id,
+                "message": "No active recording session to pause"
+            }
+        if record_status.output_paused:
+            return {
+                "status": "error",
+                "command_uid": command_uid,
+                "instance_id": instance_id,
+                "message": "Video recording is already in pause state"
+            }
+        await loop.run_in_executor(executor, obs_client.pause_record)
+        # Calculate total duration until now
+        start_time = clients[instance_id]['state'].get('recording_start_time')
+        if start_time:
+            total_duration = (datetime.datetime.now() - start_time).total_seconds()
+        else:
+            total_duration = 0
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video recording paused successfully",
+            "data": {
+                "total_duration": total_duration,
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to pause recording: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to pause recording: {e}"
+        }
+    return response
+
+async def handle_resume_recording(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        record_status = await loop.run_in_executor(executor, obs_client.get_record_status)
+        if not record_status.output_active:
+            return {
+                "status": "error",
+                "command_uid": command_uid,
+                "instance_id": instance_id,
+                "message": "No active recording session to resume"
+            }
+        if not record_status.output_paused:
+            return {
+                "status": "error",
+                "command_uid": command_uid,
+                "instance_id": instance_id,
+                "message": "Video recording is currently not in pause state"
+            }
+        await loop.run_in_executor(executor, obs_client.resume_record)
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video recording session resumed successfully",
+            "data": {
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to resume recording: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to resume recording: {e}"
+        }
+    return response
+
+async def handle_save_image_snapshot(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        resp = await loop.run_in_executor(executor, obs_client.get_current_preview_scene)
+        source_name = resp.current_program_scene_name
+        # Get a screenshot of the source
+        screenshot_resp = await loop.run_in_executor(executor, obs_client.get_source_screenshot, source_name, 'png', '', 100)
+        img_data = screenshot_resp.image_data
+        # Save the image to a file
+        filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
+        filepath = os.path.join(SNAPSHOT_DIR, filename)
+        with open(filepath, 'wb') as f:
+            f.write(img_data)
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video image snapshot saved successfully",
+            "data": {
+                "file_path": filepath,
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to save image snapshot: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to save image snapshot: {e}"
+        }
+    return response
+
+async def handle_start_replay_buffer(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, obs_client.start_replay_buffer)
+        clients[instance_id]['state']['replay_buffer_start_time'] = datetime.datetime.now()
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video recording replay buffer started successfully",
+            "data": {
+                "current_duration": 0,
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to start replay buffer: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to start replay buffer: {e}"
+        }
+    return response
+
+async def handle_stop_replay_buffer(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, obs_client.stop_replay_buffer)
+        start_time = clients[instance_id]['state'].get('replay_buffer_start_time')
+        if start_time:
+            current_duration = (datetime.datetime.now() - start_time).total_seconds()
+            clients[instance_id]['state'].pop('replay_buffer_start_time', None)
+        else:
+            current_duration = 0
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video recording replay buffer stopped successfully",
+            "data": {
+                "current_duration": current_duration,
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to stop replay buffer: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to stop replay buffer: {e}"
+        }
+    return response
+
+async def handle_save_replay_buffer(instance_id, command_uid):
+    if obs_client is None:
+        return {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Not connected to OBS Studio"
+        }
+    try:
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(executor, obs_client.save_replay_buffer)
+        # There is no direct way to get the file path or duration
+        # after saving the replay buffer in OBS WebSockets
+        # So we'll return placeholders or estimations
+        current_duration = 0  # You might need to calculate this based on your settings
+        file_path = ""  # OBS does not provide the saved file path
+        response = {
+            "status": "success",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": "Video recording replay buffer saved successfully",
+            "data": {
+                "file_path": file_path,
+                "current_duration": current_duration,
+                "datetime": datetime.datetime.now().isoformat()
+            }
+        }
+    except Exception as e:
+        logging.error(f"Failed to save replay buffer: {e}")
+        response = {
+            "status": "error",
+            "command_uid": command_uid,
+            "instance_id": instance_id,
+            "message": f"Failed to save replay buffer: {e}"
+        }
+    return response
 
 async def start_server():
     connect_to_obs()  # Connect to OBS Studio before starting the server
@@ -234,7 +490,9 @@ async def start_server():
     started = False
     while not started:
         try:
-            async with websockets.serve(handle_client, "0.0.0.0", port, origins=None):
+            async with websockets.serve(
+                handle_client, "0.0.0.0", port, origins=None
+            ):
                 logging.info(f"WebSocket server started on port {port}")
                 await asyncio.Future()  # Run forever
                 started = True
