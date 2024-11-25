@@ -364,42 +364,13 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
         # Prepare the arguments for get_source_screenshot
-        # Since passing keyword arguments directly has caused issues, we'll use functools.partial and positional arguments
-
-        # Retrieve the method signature to determine the correct parameters
-        import inspect
-        signature = inspect.signature(obs_client.get_source_screenshot)
-        print(f"Method signature: {signature}")
-
-        # From the method signature, determine the number and names of parameters
-        # For obsws-python 1.7.0, the signature is likely:
-        # def get_source_screenshot(self, source_name: str, image_format: str = 'png', image_width: int = None, image_height: int = None, image_compression_quality: int = None, image_file_path: str = None) -> GetSourceScreenshotResponse
-
-        # Prepare the arguments accordingly
-        args = (
-            scene_name,             # source_name
-            'png',                  # image_format
-            None,                   # image_width
-            None,                   # image_height
-            100,                    # image_compression_quality
-            filepath                # image_file_path
-        )
-
-        # Since 'image_file_path' may not be accepted, we might need to adjust the arguments
-        # Let's check if the method accepts 'image_file_path'
-        # If it doesn't, we'll set it to None and handle the base64 data
-
-        # Adjust the number of arguments based on the method signature
-        # If the method accepts 5 parameters after 'self', we need to pass 5 arguments
-
-        # Let's try calling with 5 arguments
         args = (
             scene_name,             # source_name
             'png',                  # image_format
             None,                   # image_width
             None,                   # image_height
             100                     # image_compression_quality
-            # Exclude image_file_path
+            # Exclude image_file_path if not accepted
         )
 
         # Get the screenshot
@@ -413,6 +384,12 @@ async def handle_save_image_snapshot(instance_id, command_uid):
 
         if not img_data_base64:
             raise Exception("No image data received from OBS.")
+
+        # Fix base64 padding if necessary
+        img_data_base64 = img_data_base64.strip()
+        missing_padding = len(img_data_base64) % 4
+        if missing_padding:
+            img_data_base64 += '=' * (4 - missing_padding)
 
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
