@@ -398,6 +398,7 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     return response
 
+
 async def handle_start_replay_buffer(instance_id, command_uid):
     if obs_client is None:
         return {
