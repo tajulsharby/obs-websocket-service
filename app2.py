@@ -9,6 +9,7 @@ import websockets
 import concurrent.futures
 import functools
 import traceback
+import base64
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -351,8 +352,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         loop = asyncio.get_event_loop()
 
         # Get the current program scene
-        resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
-        scene_name = resp.current_program_scene_name
+        resp = await loop.run_in_executor(executor, obs_client.call, 'GetCurrentProgramScene')
+        scene_name = resp['currentProgramSceneName']
 
         # Ensure the snapshot directory exists
         if not os.path.exists(SNAPSHOT_DIR):
@@ -362,34 +363,37 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Prepare the keyword arguments
-        kwargs = {
-            'source_name': scene_name,
-            'image_format': 'png',
-            'image_width': None,
-            'image_height': None,
-            'image_compression_quality': 100,
-            'image_file_path': filepath
+        # Prepare the request data
+        request_data = {
+            'sourceName': scene_name,
+            'imageFormat': 'png',
+            'imageCompressionQuality': 100,
+            # 'imageFilePath': filepath  # Uncomment if your OBS version supports saving directly to file
         }
 
-        # Get the screenshot and save directly to file
+        # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            functools.partial(obs_client.get_source_screenshot, **kwargs)
+            functools.partial(obs_client.call, 'GetSourceScreenshot', request_data)
         )
 
         # Check for errors in the response
-        if hasattr(screenshot_resp, 'responseData') and 'error' in screenshot_resp.responseData:
-            error_message = screenshot_resp.responseData['error']
+        if 'status' in screenshot_resp and screenshot_resp['status'] != 'ok':
+            error_message = screenshot_resp.get('error', 'Unknown error')
             raise Exception(f"OBS returned an error: {error_message}")
 
+        # Get the base64 image data
+        img_data_base64 = screenshot_resp.get('imageData')
 
-        # Log the response for debugging
-        logging.debug(f"screenshot_resp: {screenshot_resp}")
+        if not img_data_base64:
+            raise Exception("No image data received from OBS.")
 
-        # Check if the image was saved successfully
-        if not os.path.exists(filepath):
-            raise Exception("Failed to save the image snapshot to the specified file path.")
+        # Decode the base64 image data
+        img_data = base64.b64decode(img_data_base64)
+
+        # Save the image to a file
+        with open(filepath, 'wb') as f:
+            f.write(img_data)
 
         response = {
             "status": "success",
@@ -412,23 +416,46 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     return response
 
-async def test_save_image_snapshot():
+def test_save_image_snapshot():
     obs_client = obs.ReqClient(host='localhost', port=4455, password='')
-    scene_resp = obs_client.get_current_program_scene()
-    scene_name = scene_resp.current_program_scene_name
 
+    # Get the current program scene
+    resp = obs_client.call('GetCurrentProgramScene')
+    scene_name = resp['currentProgramSceneName']
+
+    # Prepare the request data
+    request_data = {
+        'sourceName': scene_name,
+        'imageFormat': 'png',
+        'imageCompressionQuality': 100
+    }
+
+    # Send the request
+    resp = obs_client.call('GetSourceScreenshot', request_data)
+
+    # Check for errors
+    if 'status' in resp and resp['status'] != 'ok':
+        print(f"Failed to save snapshot: {resp.get('error', 'Unknown error')}")
+        return
+
+    # Get the base64 image data
+    img_data_base64 = resp.get('imageData')
+
+    if not img_data_base64:
+        print("No image data received from OBS.")
+        return
+
+    # Decode the base64 image data
+    img_data = base64.b64decode(img_data_base64)
+
+    # Define the file path
     filepath = os.path.abspath('test_snapshot.png')
 
-    resp = obs_client.get_source_screenshot(
-        source_name=scene_name,
-        image_format='png',
-        image_file_path=filepath
-    )
+    # Save the image to a file
+    with open(filepath, 'wb') as f:
+        f.write(img_data)
 
-    if os.path.exists(filepath):
-        print(f"Snapshot saved successfully at {filepath}")
-    else:
-        print("Failed to save snapshot.")
+    print(f"Snapshot saved successfully at {filepath}")
 
 async def handle_start_replay_buffer(instance_id, command_uid):
     if obs_client is None:
