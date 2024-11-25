@@ -272,12 +272,10 @@
       }
     });
 
-    takeSnapshotBtn.addEventListener('click', () => {
+    testTakeSnapshotBtn.addEventListener('click', () => {
       if (websocket && websocket.readyState === WebSocket.OPEN) {
         const command = {
           command: 'TEST_SAVE_IMAGE_SNAPSHOT',
-          command_uid: generateUUID(),
-          instance_id: instanceId
         };
         websocket.send(JSON.stringify(command));
         addToConsole(`Sent: ${JSON.stringify(command)}`);

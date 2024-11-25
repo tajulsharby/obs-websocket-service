@@ -120,7 +120,7 @@ async def process_message(instance_id, message):
         elif command == 'SAVE_REPLAY_BUFFER':
             response = await handle_save_replay_buffer(instance_id, command_uid)
         elif command == 'TEST_SAVE_IMAGE_SNAPSHOT':
-            response = await test_save_image_snapshot(instance_id, command_uid)
+            response = await test_save_image_snapshot()
         else:
             response = {
                 "status": "error",
