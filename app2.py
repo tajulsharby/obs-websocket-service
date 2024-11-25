@@ -8,6 +8,7 @@ import obsws_python as obs
 import websockets
 import concurrent.futures
 import base64
+import functools
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -349,9 +350,9 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         # Use GetCurrentProgramScene instead
         resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
         scene_name = resp.current_program_scene_name
-        # Get a screenshot of the scene
-        screenshot_resp = await loop.run_in_executor(
-            executor,
+
+        # Create a partial function with the keyword arguments
+        screenshot_func = functools.partial(
             obs_client.get_source_screenshot,
             sourceName=scene_name,
             imageFormat='png',
@@ -359,14 +360,20 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             imageHeight=None,
             imageCompressionQuality=100
         )
+
+        # Execute the partial function in the executor
+        screenshot_resp = await loop.run_in_executor(executor, screenshot_func)
         img_data_base64 = screenshot_resp.image_data
+
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
+
         # Save the image to a file
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
         filepath = os.path.join(SNAPSHOT_DIR, filename)
         with open(filepath, 'wb') as f:
             f.write(img_data)
+
         response = {
             "status": "success",
             "command_uid": command_uid,
