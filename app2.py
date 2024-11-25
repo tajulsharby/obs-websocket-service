@@ -7,7 +7,6 @@ import uuid
 import obsws_python as obs
 import websockets
 import concurrent.futures
-import base64
 import functools
 import traceback
 
@@ -120,6 +119,8 @@ async def process_message(instance_id, message):
             response = await handle_stop_replay_buffer(instance_id, command_uid)
         elif command == 'SAVE_REPLAY_BUFFER':
             response = await handle_save_replay_buffer(instance_id, command_uid)
+        elif command == 'TEST_SAVE_IMAGE_SNAPSHOT':
+            response = await test_save_image_snapshot(instance_id, command_uid)
         else:
             response = {
                 "status": "error",
@@ -372,16 +373,29 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
 
         # Get the screenshot and save directly to file
-        await loop.run_in_executor(
+        screenshot_resp = await loop.run_in_executor(
             executor,
             functools.partial(obs_client.get_source_screenshot, **kwargs)
         )
+
+        # Check for errors in the response
+        if hasattr(screenshot_resp, 'responseData') and 'error' in screenshot_resp.responseData:
+            error_message = screenshot_resp.responseData['error']
+            raise Exception(f"OBS returned an error: {error_message}")
+
+
+        # Log the response for debugging
+        logging.debug(f"screenshot_resp: {screenshot_resp}")
+
+        # Check if the image was saved successfully
+        if not os.path.exists(filepath):
+            raise Exception("Failed to save the image snapshot to the specified file path.")
 
         response = {
             "status": "success",
             "command_uid": command_uid,
             "instance_id": instance_id,
-            "message": "Video image snapshot saved successfully",
+            "message": "Image snapshot saved successfully",
             "data": {
                 "file_path": filepath,
                 "datetime": datetime.datetime.now().isoformat()
@@ -397,6 +411,27 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             "message": f"Failed to save image snapshot: {e}"
         }
     return response
+
+async def test_save_image_snapshot():
+    obs_client = obs.ReqClient(host='localhost', port=4455, password='')
+    scene_resp = obs_client.get_current_program_scene()
+    scene_name = scene_resp.current_program_scene_name
+
+    filepath = os.path.abspath('test_snapshot.png')
+
+    resp = obs_client.get_source_screenshot(
+        source_name=scene_name,
+        image_format='png',
+        image_file_path=filepath
+    )
+
+    if os.path.exists(filepath):
+        print(f"Snapshot saved successfully at {filepath}")
+    else:
+        print("Failed to save snapshot.")
+
+asyncio.run(test_save_image_snapshot())
+
 
 async def handle_start_replay_buffer(instance_id, command_uid):
     if obs_client is None:

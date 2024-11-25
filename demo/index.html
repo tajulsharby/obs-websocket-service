@@ -71,6 +71,7 @@
       <button id="stopRecordingBtn" disabled>Stop Recording</button>
       <button id="pauseResumeBtn" disabled>Pause Recording</button>
       <button id="takeSnapshotBtn" disabled>Take Snapshot</button>
+      <button id="testTakeSnapshotBtn" disabled>Test Take Snapshot</button>
       <button id="startReplayBufferBtn" disabled>Start Replay Buffer</button>
       <button id="stopReplayBufferBtn" disabled>Stop Replay Buffer</button>
       <button id="saveReplayBufferBtn" disabled>Save Replay Buffer</button>
@@ -92,6 +93,7 @@
     const stopRecordingBtn = document.getElementById('stopRecordingBtn');
     const pauseResumeBtn = document.getElementById('pauseResumeBtn');
     const takeSnapshotBtn = document.getElementById('takeSnapshotBtn');
+    const testTakeSnapshotBtn = document.getElementById('testTakeSnapshotBtn');
     const startReplayBufferBtn = document.getElementById('startReplayBufferBtn');
     const stopReplayBufferBtn = document.getElementById('stopReplayBufferBtn');
     const saveReplayBufferBtn = document.getElementById('saveReplayBufferBtn');
@@ -151,6 +153,7 @@
             stopRecordingBtn.disabled = false;
             pauseResumeBtn.disabled = false;
             takeSnapshotBtn.disabled = false;
+            testTakeSnapshotBtn.disabled = false;
             startReplayBufferBtn.disabled = false;
             stopReplayBufferBtn.disabled = false;
             saveReplayBufferBtn.disabled = false;
@@ -168,6 +171,7 @@
         stopRecordingBtn.disabled = true;
         pauseResumeBtn.disabled = true;
         takeSnapshotBtn.disabled = true;
+        testTakeSnapshotBtn.disabled = true;
         startReplayBufferBtn.disabled = true;
         stopReplayBufferBtn.disabled = true;
         saveReplayBufferBtn.disabled = true;
@@ -267,6 +271,21 @@
         addToConsole('WebSocket is not connected.', 'error');
       }
     });
+
+    takeSnapshotBtn.addEventListener('click', () => {
+      if (websocket && websocket.readyState === WebSocket.OPEN) {
+        const command = {
+          command: 'TEST_SAVE_IMAGE_SNAPSHOT',
+          command_uid: generateUUID(),
+          instance_id: instanceId
+        };
+        websocket.send(JSON.stringify(command));
+        addToConsole(`Sent: ${JSON.stringify(command)}`);
+      } else {
+        addToConsole('WebSocket is not connected.', 'error');
+      }
+    });
+
 
     startReplayBufferBtn.addEventListener('click', () => {
       if (websocket && websocket.readyState === WebSocket.OPEN) {
