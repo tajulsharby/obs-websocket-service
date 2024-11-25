@@ -353,29 +353,35 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
         scene_name = resp.current_program_scene_name
 
+        # Prepare the arguments without the extra parameter
+        args = (
+            scene_name,     # source_name
+            'png',          # image_format
+            None,           # image_width
+            None,           # image_height
+            100             # image_compression_quality
+        )
+
+        # Get the screenshot
+        screenshot_resp = await loop.run_in_executor(
+            executor,
+            functools.partial(obs_client.get_source_screenshot, *args)
+        )
+
+        img_data_base64 = screenshot_resp.image_data
+
+        # Decode the base64 image data
+        img_data = base64.b64decode(img_data_base64)
+
         # Ensure the snapshot directory exists
         if not os.path.exists(SNAPSHOT_DIR):
             os.makedirs(SNAPSHOT_DIR)
 
-        # Define the file path where the image will be saved
+        # Save the image to a file
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
-        filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
-
-        # Prepare the keyword arguments
-        kwargs = {
-            'source_name': scene_name,
-            'image_format': 'png',
-            'image_width': None,
-            'image_height': None,
-            'image_compression_quality': 100,
-            'image_file_path': filepath
-        }
-
-        # Get the screenshot and save directly to file
-        await loop.run_in_executor(
-            executor,
-            functools.partial(obs_client.get_source_screenshot, **kwargs)
-        )
+        filepath = os.path.join(SNAPSHOT_DIR, filename)
+        with open(filepath, 'wb') as f:
+            f.write(img_data)
 
         response = {
             "status": "success",
@@ -389,7 +395,6 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     except Exception as e:
         logging.error(f"Failed to save image snapshot: {e}")
-        logging.error(traceback.format_exc())
         response = {
             "status": "error",
             "command_uid": command_uid,
@@ -397,7 +402,6 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             "message": f"Failed to save image snapshot: {e}"
         }
     return response
-
 
 async def handle_start_replay_buffer(instance_id, command_uid):
     if obs_client is None:
