@@ -430,9 +430,6 @@ async def test_save_image_snapshot():
     else:
         print("Failed to save snapshot.")
 
-asyncio.run(test_save_image_snapshot())
-
-
 async def handle_start_replay_buffer(instance_id, command_uid):
     if obs_client is None:
         return {
