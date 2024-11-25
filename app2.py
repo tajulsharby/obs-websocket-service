@@ -347,26 +347,31 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     try:
         loop = asyncio.get_event_loop()
-        # Use GetCurrentProgramScene instead
+
+        # Get the current program scene
         resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
         scene_name = resp.current_program_scene_name
 
-        # Create a partial function with the keyword arguments
+        # Create a partial function with the correct parameter names
         screenshot_func = functools.partial(
             obs_client.get_source_screenshot,
-            sourceName=scene_name,
-            imageFormat='png',
-            imageWidth=None,
-            imageHeight=None,
-            imageCompressionQuality=100
+            source_name=scene_name,
+            image_format='png',
+            image_width=None,
+            image_height=None,
+            image_compression_quality=100
         )
 
-        # Execute the partial function in the executor
+        # Execute the function in the executor
         screenshot_resp = await loop.run_in_executor(executor, screenshot_func)
         img_data_base64 = screenshot_resp.image_data
 
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
+
+        # Ensure the snapshot directory exists
+        if not os.path.exists(SNAPSHOT_DIR):
+            os.makedirs(SNAPSHOT_DIR)
 
         # Save the image to a file
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
