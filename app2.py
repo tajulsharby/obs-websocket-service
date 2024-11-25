@@ -9,6 +9,7 @@ import websockets
 import concurrent.futures
 import base64
 import functools
+import traceback
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -352,14 +353,13 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
         scene_name = resp.current_program_scene_name
 
-        # Prepare the arguments
+        # Prepare the arguments without the extra parameter
         args = (
             scene_name,     # source_name
             'png',          # image_format
             None,           # image_width
             None,           # image_height
-            100,            # image_compression_quality
-            None            # image_file_path
+            100             # image_compression_quality
         )
 
         # Get the screenshot
@@ -395,6 +395,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
     except Exception as e:
         logging.error(f"Failed to save image snapshot: {e}")
+        logging.error(traceback.format_exc())
+
         response = {
             "status": "error",
             "command_uid": command_uid,
