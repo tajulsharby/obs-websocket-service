@@ -352,18 +352,22 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
         scene_name = resp.current_program_scene_name
 
-        # Create a partial function with the correct parameter names
-        screenshot_func = functools.partial(
-            obs_client.get_source_screenshot,
-            source_name=scene_name,
-            image_format='png',
-            image_width=None,
-            image_height=None,
-            image_compression_quality=100
+        # Prepare the arguments
+        args = (
+            scene_name,     # source_name
+            'png',          # image_format
+            None,           # image_width
+            None,           # image_height
+            100,            # image_compression_quality
+            None            # image_file_path
         )
 
-        # Execute the function in the executor
-        screenshot_resp = await loop.run_in_executor(executor, screenshot_func)
+        # Get the screenshot
+        screenshot_resp = await loop.run_in_executor(
+            executor,
+            functools.partial(obs_client.get_source_screenshot, *args)
+        )
+
         img_data_base64 = screenshot_resp.image_data
 
         # Decode the base64 image data
