@@ -352,8 +352,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         loop = asyncio.get_event_loop()
 
         # Get the current program scene
-        resp = await loop.run_in_executor(executor, obs_client.call, 'GetCurrentProgramScene')
-        scene_name = resp['currentProgramSceneName']
+        resp = await loop.run_in_executor(executor, obs_client.get_current_program_scene)
+        scene_name = resp.current_program_scene_name
 
         # Ensure the snapshot directory exists
         if not os.path.exists(SNAPSHOT_DIR):
@@ -363,27 +363,53 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime("%Y%m%d%H%M%S") + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Prepare the request data
-        request_data = {
-            'sourceName': scene_name,
-            'imageFormat': 'png',
-            'imageCompressionQuality': 100,
-            # 'imageFilePath': filepath  # Uncomment if your OBS version supports saving directly to file
-        }
+        # Prepare the arguments for get_source_screenshot
+        # Since passing keyword arguments directly has caused issues, we'll use functools.partial and positional arguments
+
+        # Retrieve the method signature to determine the correct parameters
+        import inspect
+        signature = inspect.signature(obs_client.get_source_screenshot)
+        print(f"Method signature: {signature}")
+
+        # From the method signature, determine the number and names of parameters
+        # For obsws-python 1.7.0, the signature is likely:
+        # def get_source_screenshot(self, source_name: str, image_format: str = 'png', image_width: int = None, image_height: int = None, image_compression_quality: int = None, image_file_path: str = None) -> GetSourceScreenshotResponse
+
+        # Prepare the arguments accordingly
+        args = (
+            scene_name,             # source_name
+            'png',                  # image_format
+            None,                   # image_width
+            None,                   # image_height
+            100,                    # image_compression_quality
+            filepath                # image_file_path
+        )
+
+        # Since 'image_file_path' may not be accepted, we might need to adjust the arguments
+        # Let's check if the method accepts 'image_file_path'
+        # If it doesn't, we'll set it to None and handle the base64 data
+
+        # Adjust the number of arguments based on the method signature
+        # If the method accepts 5 parameters after 'self', we need to pass 5 arguments
+
+        # Let's try calling with 5 arguments
+        args = (
+            scene_name,             # source_name
+            'png',                  # image_format
+            None,                   # image_width
+            None,                   # image_height
+            100                     # image_compression_quality
+            # Exclude image_file_path
+        )
 
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            functools.partial(obs_client.call, 'GetSourceScreenshot', request_data)
+            functools.partial(obs_client.get_source_screenshot, *args)
         )
 
-        # Check for errors in the response
-        if 'status' in screenshot_resp and screenshot_resp['status'] != 'ok':
-            error_message = screenshot_resp.get('error', 'Unknown error')
-            raise Exception(f"OBS returned an error: {error_message}")
-
-        # Get the base64 image data
-        img_data_base64 = screenshot_resp.get('imageData')
+        # Access the base64 image data
+        img_data_base64 = screenshot_resp.image_data
 
         if not img_data_base64:
             raise Exception("No image data received from OBS.")
