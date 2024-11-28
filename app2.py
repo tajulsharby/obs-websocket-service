@@ -385,11 +385,11 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         if not img_data_base64:
             raise Exception("No image data received from OBS.")
 
-        # # Fix base64 padding if necessary
-        # img_data_base64 = img_data_base64.strip()
-        # missing_padding = len(img_data_base64) % 4
-        # if missing_padding:
-        #     img_data_base64 += '=' * (4 - missing_padding)
+        # Fix base64 padding if necessary
+        img_data_base64 = img_data_base64.strip()
+        missing_padding = len(img_data_base64) % 4
+        if missing_padding:
+            img_data_base64 += '=' * (4 - missing_padding)
 
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
