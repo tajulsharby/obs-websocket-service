@@ -12,6 +12,7 @@ import traceback
 import base64
 import inspect
 import datetime  # Make sure to import datetime if not already imported
+from obsws_python import ReqClient, GetSourceScreenshotRequest
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -343,6 +344,7 @@ async def handle_resume_recording(instance_id, command_uid):
     return response
 
 async def handle_save_image_snapshot(instance_id, command_uid):
+    global obs_client  # Ensure obs_client is accessible
     if obs_client is None:
         return {
             'status': 'error',
@@ -365,19 +367,20 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Prepare the keyword arguments
-        screenshot_kwargs = {
-            'sourceName': scene_name,
-            'imageFormat': 'png',
-            'imageWidth': 1920,
-            'imageHeight': 1080,
-            'imageCompressionQuality': 100
-        }
+        # Create GetSourceScreenshotRequest object with the required parameters
+        request_data = GetSourceScreenshotRequest(
+            source_name=scene_name,
+            image_format='png',
+            image_width=1920,
+            image_height=1080,
+            image_compression_quality=100
+        )
 
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            lambda: obs_client.get_source_screenshot(**screenshot_kwargs)
+            obs_client.get_source_screenshot,
+            request_data
         )
 
         # Access the base64 image data
@@ -386,32 +389,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
 
-        # Inspect the base64 data
-        logging.debug(f"Length of img_data_base64: {len(img_data_base64)}")
-        logging.debug(f"First 100 characters of img_data_base64: {img_data_base64[:100]}")
-
-        # Handle possible error messages in the data
-        if img_data_base64.startswith('{') or img_data_base64.startswith('<'):
-            logging.error(f"Received error message instead of image data: {img_data_base64}")
-            raise Exception('Received error message instead of image data.')
-
-        # Fix base64 padding if necessary
-        img_data_base64 = img_data_base64.strip()
-        missing_padding = len(img_data_base64) % 4
-        if missing_padding:
-            img_data_base64 += '=' * (4 - missing_padding)
-
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
-
-        # Check if the decoded data is a valid image
-        if img_data.startswith(b'\x89PNG\r\n\x1a\n') or img_data.startswith(b'\xff\xd8'):
-            logging.debug('Image data has valid PNG or JPEG header.')
-        else:
-            logging.error('Decoded data does not start with valid PNG or JPEG headers.')
-            with open('invalid_image_data.bin', 'wb') as f:
-                f.write(img_data)
-            raise Exception('Invalid image data received from OBS.')
 
         # Save the image to a file
         with open(filepath, 'wb') as f:
@@ -437,6 +416,7 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             'message': f'Failed to save image snapshot: {e}'
         }
     return response
+
 
 def test_save_image_snapshot():
     obs_client = obs.ReqClient(host='localhost', port=4455, password='')
