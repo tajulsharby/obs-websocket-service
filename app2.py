@@ -12,7 +12,7 @@ import traceback
 import base64
 import inspect
 import datetime  # Make sure to import datetime if not already imported
-from obsws_python import ReqClient
+import obsws_python as obs
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -423,6 +423,7 @@ async def handle_save_image_snapshot(instance_id, command_uid):
 
 def test_save_image_snapshot():
     obs_client = obs.ReqClient(host='localhost', port=4455, password='')
+    obs_client = obs.Client(host='localhost', port=4455, password='')
 
     # Get the current program scene
     resp = obs_client.call('GetCurrentProgramScene')
