@@ -61,7 +61,9 @@ ensure_directories()
 def connect_to_obs(host=DEFAULT_OBS_HOST, port=DEFAULT_OBS_PORT, password=DEFAULT_OBS_PASSWORD):
     global obs_client
     try:
-        obs_client = obs.ReqClient(host=host, port=port, password=password, timeout=10)
+        #obs_client = obs.ReqClient(host=host, port=port, password=password, timeout=10)
+        obs_client = obs.Client(host=host, port=port, password=password, timeout=10)
+
         logging.info(f"Connected to OBS Studio at {host}:{port}")
     except Exception as e:
         logging.error(f"Failed to connect to OBS Studio: {e}")
@@ -353,11 +355,13 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             'message': 'Not connected to OBS Studio'
         }
     try:
-        loop = asyncio.get_event_loop()
+        # Connect to OBS if not already connected
+        if not obs_client.is_connected:
+            await obs_client.connect()
 
         # Get the current program scene
-        resp = await loop.run_in_executor(executor, obs_client.call, 'GetCurrentProgramScene')
-        scene_name = resp['currentProgramSceneName']
+        resp = await obs_client.call('GetCurrentProgramScene')
+        scene_name = resp.current_program_scene_name
 
         # Ensure the snapshot directory exists
         if not os.path.exists(SNAPSHOT_DIR):
@@ -377,15 +381,10 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         }
 
         # Get the screenshot
-        screenshot_resp = await loop.run_in_executor(
-            executor,
-            obs_client.call,
-            'GetSourceScreenshot',
-            request_data
-        )
+        screenshot_resp = await obs_client.call('GetSourceScreenshot', request_data)
 
         # Access the base64 image data
-        img_data_base64 = screenshot_resp['imageData']
+        img_data_base64 = screenshot_resp.image_data
 
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
@@ -416,6 +415,10 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             'instance_id': instance_id,
             'message': f'Failed to save image snapshot: {e}'
         }
+    finally:
+        # Disconnect from OBS if needed
+        if obs_client.is_connected:
+            await obs_client.disconnect()
     return response
 
 def test_save_image_snapshot():
