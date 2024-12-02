@@ -12,7 +12,8 @@ import traceback
 import base64
 import inspect
 import datetime  # Make sure to import datetime if not already imported
-from obsws_python import ReqClient, GetSourceScreenshotRequest
+from obsws_python import ReqClient
+from obsws_python.generated.requests import GetCurrentProgramScene, GetSourceScreenshot
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -367,8 +368,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Create GetSourceScreenshotRequest object with the required parameters
-        request_data = GetSourceScreenshotRequest(
+        # Create GetSourceScreenshot request object with the required parameters
+        request = GetSourceScreenshot(
             source_name=scene_name,
             image_format='png',
             image_width=1920,
@@ -379,8 +380,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            obs_client.get_source_screenshot,
-            request_data
+            obs_client.send_request,
+            request
         )
 
         # Access the base64 image data
@@ -416,7 +417,6 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             'message': f'Failed to save image snapshot: {e}'
         }
     return response
-
 
 def test_save_image_snapshot():
     obs_client = obs.ReqClient(host='localhost', port=4455, password='')
