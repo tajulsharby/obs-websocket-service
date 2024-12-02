@@ -364,23 +364,26 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Prepare the requestData dictionary
-        requestData = {
-            'sourceName': scene_name,
-            'imageFormat': 'png',
-            'imageCompressionQuality': 100
-            # 'imageFilePath': filepath  # Uncomment if your OBS version supports saving directly to a file
-        }
+        # Prepare the arguments
+        source_name = scene_name
+        img_format = 'png'
+        width = 0  # 0 means use original width
+        height = 0  # 0 means use original height
+        quality = 100  # Quality from 1 to 100
 
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
             obs_client.get_source_screenshot,
-            requestData
+            source_name,
+            img_format,
+            width,
+            height,
+            quality
         )
 
         # Access the base64 image data
-        img_data_base64 = screenshot_resp['imageData']
+        img_data_base64 = screenshot_resp['img']
 
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
