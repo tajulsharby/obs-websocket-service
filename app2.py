@@ -365,32 +365,53 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Set acceptable values for width and height
-        source_name = scene_name
-        img_format = 'png'
-        width = 1920  # Set to desired width (minimum 8)
-        height = 1080  # Set to desired height (minimum 8)
-        quality = 100  # Quality from 1 to 100
+        # Prepare the keyword arguments
+        screenshot_kwargs = {
+            'sourceName': scene_name,
+            'imageFormat': 'png',
+            'imageWidth': 1920,
+            'imageHeight': 1080,
+            'imageCompressionQuality': 100
+        }
 
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            obs_client.get_source_screenshot,
-            source_name,
-            img_format,
-            width,
-            height,
-            quality
+            lambda: obs_client.get_source_screenshot(**screenshot_kwargs)
         )
 
-        # Access the base64 image data using dot notation
-        img_data_base64 = screenshot_resp.image_data  # Use 'image_data' attribute
+        # Access the base64 image data
+        img_data_base64 = screenshot_resp.image_data
 
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
 
+        # Inspect the base64 data
+        logging.debug(f"Length of img_data_base64: {len(img_data_base64)}")
+        logging.debug(f"First 100 characters of img_data_base64: {img_data_base64[:100]}")
+
+        # Handle possible error messages in the data
+        if img_data_base64.startswith('{') or img_data_base64.startswith('<'):
+            logging.error(f"Received error message instead of image data: {img_data_base64}")
+            raise Exception('Received error message instead of image data.')
+
+        # Fix base64 padding if necessary
+        img_data_base64 = img_data_base64.strip()
+        missing_padding = len(img_data_base64) % 4
+        if missing_padding:
+            img_data_base64 += '=' * (4 - missing_padding)
+
         # Decode the base64 image data
         img_data = base64.b64decode(img_data_base64)
+
+        # Check if the decoded data is a valid image
+        if img_data.startswith(b'\x89PNG\r\n\x1a\n') or img_data.startswith(b'\xff\xd8'):
+            logging.debug('Image data has valid PNG or JPEG header.')
+        else:
+            logging.error('Decoded data does not start with valid PNG or JPEG headers.')
+            with open('invalid_image_data.bin', 'wb') as f:
+                f.write(img_data)
+            raise Exception('Invalid image data received from OBS.')
 
         # Save the image to a file
         with open(filepath, 'wb') as f:
