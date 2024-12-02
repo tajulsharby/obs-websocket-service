@@ -13,7 +13,6 @@ import base64
 import inspect
 import datetime  # Make sure to import datetime if not already imported
 from obsws_python import ReqClient
-from obsws_python.reqs import GetSourceScreenshotRequest, GetCurrentProgramSceneRequest
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -357,9 +356,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         loop = asyncio.get_event_loop()
 
         # Get the current program scene
-        get_scene_request = GetCurrentProgramSceneRequest()
-        resp = await loop.run_in_executor(executor, obs_client.send_request, get_scene_request)
-        scene_name = resp.getName()
+        resp = await loop.run_in_executor(executor, obs_client.call, 'GetCurrentProgramScene')
+        scene_name = resp['currentProgramSceneName']
 
         # Ensure the snapshot directory exists
         if not os.path.exists(SNAPSHOT_DIR):
@@ -369,24 +367,25 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Create GetSourceScreenshotRequest object with the required parameters
-        request = GetSourceScreenshotRequest(
-            sourceName=scene_name,
-            imageFormat='png',
-            imageWidth=1920,
-            imageHeight=1080,
-            imageCompressionQuality=100
-        )
+        # Prepare the request parameters
+        request_data = {
+            'sourceName': scene_name,
+            'imageFormat': 'png',
+            'imageWidth': 1920,
+            'imageHeight': 1080,
+            'imageCompressionQuality': 100
+        }
 
         # Get the screenshot
         screenshot_resp = await loop.run_in_executor(
             executor,
-            obs_client.send_request,
-            request
+            obs_client.call,
+            'GetSourceScreenshot',
+            request_data
         )
 
         # Access the base64 image data
-        img_data_base64 = screenshot_resp.getImageData()
+        img_data_base64 = screenshot_resp['imageData']
 
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
