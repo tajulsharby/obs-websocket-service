@@ -11,6 +11,7 @@ import functools
 import traceback
 import base64
 import inspect
+import datetime  # Make sure to import datetime if not already imported
 
 # Default configuration
 DEFAULT_OBS_HOST = 'localhost'
@@ -382,8 +383,8 @@ async def handle_save_image_snapshot(instance_id, command_uid):
             quality
         )
 
-        # Access the base64 image data
-        img_data_base64 = screenshot_resp['img']
+        # Access the base64 image data using dot notation
+        img_data_base64 = screenshot_resp.image_data  # Use 'image_data' attribute
 
         if not img_data_base64:
             raise Exception('No image data received from OBS.')
