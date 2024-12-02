@@ -364,11 +364,11 @@ async def handle_save_image_snapshot(instance_id, command_uid):
         filename = datetime.datetime.now().strftime('%Y%m%d%H%M%S') + '.png'
         filepath = os.path.abspath(os.path.join(SNAPSHOT_DIR, filename))
 
-        # Prepare the arguments
+        # Set acceptable values for width and height
         source_name = scene_name
         img_format = 'png'
-        width = 0  # 0 means use original width
-        height = 0  # 0 means use original height
+        width = 1920  # Set to desired width (minimum 8)
+        height = 1080  # Set to desired height (minimum 8)
         quality = 100  # Quality from 1 to 100
 
         # Get the screenshot
